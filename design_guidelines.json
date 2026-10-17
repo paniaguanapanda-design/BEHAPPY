@@ -1,0 +1,173 @@
+{
+  "app_name": "FixAI",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "Trustworthy, highly-legible iOS-native layout with natural botanical tones to frame specialist expertise and AI diagnostics.",
+  "color": {
+    "surface": "#FAF9F6",
+    "onSurface": "#1C1B19",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1C1B19",
+    "surfaceTertiary": "#F0EDE6",
+    "onSurfaceTertiary": "#4A4844",
+    "surfaceInverse": "#1C1B19",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#2D4A22",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#2D4A22",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#E8F0E4",
+    "onBrandSecondary": "#2D4A22",
+    "brandTertiary": "#4A7A3A",
+    "onBrandTertiary": "#FFFFFF",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FF9500",
+    "onWarning": "#FFFFFF",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#007AFF",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E3DF",
+    "borderStrong": "#CFCBC5",
+    "divider": "#E5E3DF",
+    "muted": "#8B8881"
+  },
+  "typography": {
+    "displayFontFamily": "Geist",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous iOS-native padding. Use margins to separate logical blocks. Thumb zone matters for CTAs.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Bottom tab bar",
+      "Sticky bottom CTA container on scrolling screens",
+      "Header background over scrollable lists"
+    ],
+    "dont's": [
+      "Inside cards",
+      "Over body text",
+      "Form fields"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home (Camera Scan)",
+      "purpose": "Live camera capture with AI diagnostics leading to a DIY vs Pro decision.",
+      "states": {
+        "loading": "Pulsing reticle overlay on camera feed.",
+        "empty": "Camera ready, waiting for object in frame.",
+        "error": "Modal sheet with retry button and troubleshooting steps."
+      },
+      "layout": "Camera view fills the safe area. A reticle sits in the center. Upon object detection, a continuous bounding box is drawn around the prominent object with a confidence label. A modal bottom sheet slides up showing AI results: step-by-step DIY instructions with color-coded difficulty (Green=DIY, Red=Pro) and materials list. A sticky bottom CTA 'Call Specialist' is anchored above the home indicator."
+    },
+    {
+      "name": "Specialists",
+      "purpose": "Browse and filter trusted local tradespeople.",
+      "states": {
+        "loading": "Skeleton rows of specialist cards.",
+        "empty": "Illustration of a toolbox with 'No specialists found for this category'.",
+        "error": "Error message with 'Retry connection' button."
+      },
+      "layout": "Horizontal filter chips (Plumbing, Electrical, Carpentry) below the header. Vertical list of specialist cards. Each card fills 100% of horizontal width minus padding, containing avatar, name, trade, rating, and verified badge. Tapping opens Specialist Profile."
+    },
+    {
+      "name": "Specialist Profile",
+      "purpose": "Build trust and facilitate booking via portfolio and ratings.",
+      "states": {
+        "loading": "Skeleton view of profile header.",
+        "empty": "No portfolio items message inside gallery.",
+        "error": "Unable to load profile data."
+      },
+      "layout": "Full-bleed hero portrait or gallery with vertical gradient-to-dark scrim. Prominent trust badges (Verified, 4.9 stars) below the header. 'About' section, 'Portfolio' horizontal scroll of real past work. Persistent sticky 'Contact' (Chat / Call / Request) CTA at the bottom within a glassmorphic container."
+    },
+    {
+      "name": "Messages",
+      "purpose": "In-app chat list and active conversations.",
+      "states": {
+        "loading": "Skeleton list rows.",
+        "empty": "Icon with 'No messages yet'.",
+        "error": "Unable to load messages."
+      },
+      "layout": "Standard iOS list rhythm. Leading avatar, title, unread dot, trailing timestamp. Chat detail screen has a fixed input area at bottom inside KeyboardAvoidingView."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Settings, language toggle, and specialist registration.",
+      "states": {
+        "loading": "Standard spinner.",
+        "empty": "Not logged in state.",
+        "error": "Error loading user data."
+      },
+      "layout": "Grouped list items using surfaceSecondary on a surface background. Toggle for languages (Italian/Spanish). 'Register as Specialist' row leading to a multi-step form."
+    }
+  ],
+  "images": {
+    "hero_scan_bg": {
+      "url": "https://images.unsplash.com/photo-1686890363933-4a1125d4e3b0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwxfHxicm9rZW4lMjBwaXBlJTIwbGVha2luZyUyMHdhdGVyJTIwd2FsbHxlbnwwfHx8fDE3OTIyMzcwMjR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Close up of a leaking pipe in a wall"
+    },
+    "specialist_avatar_1": {
+      "url": "https://images.pexels.com/photos/8487397/pexels-photo-8487397.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Portrait of a smiling professional handyman"
+    },
+    "specialist_avatar_2": {
+      "url": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBlbGVjdHJpY2lhbiUyMHdvcmtpbmclMjBwb3J0cmFpdHxlbnwwfHx8fDE3OTIyMzcwMjR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Electrician installing wiring"
+    },
+    "specialist_portfolio_1": {
+      "url": "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBjbGVhbiUyMHBsdW1iaW5nJTIwcGlwZXMlMjBmaXhlZHxlbnwwfHx8fDE3OTIyMzcwMjR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Clean and fixed plumbing pipes"
+    },
+    "specialist_portfolio_2": {
+      "url": "https://images.pexels.com/photos/19841115/pexels-photo-19841115.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Close-up of modern electrical relays"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use the 1 iOS-Native Clean personality. Prioritize readable typography, generous spacing, and deep botanical greens as the primary brand color to build trust and convey 'safe home'.",
+    "STRICT NO BLUES OR PURPLES. We are using forest/sage green as the primary brand color (#2D4A22).",
+    "In the Home (Scan) screen, utilize a full-screen camera view with an overlaid Reticle. Once diagnosed, present the AI Gemini 3 Flash results inside a gorhom/bottom-sheet modal. Color code the difficulty (DIY=Green, Pro=Red) to help users decide.",
+    "For Specialist profiles, use full-bleed hero photos with a vertical gradient scrim (transparent to #1C1B19 at the bottom) so white text stays readable. Place a fixed 'Contact' CTA at the bottom in a glassmorphic container.",
+    "Ensure all lists use 100% width padded cards, and any sticky bottom CTA must float safely above the home indicator, allowing content to scroll behind it.",
+    "Incorporate a language toggle (Italian/Spanish) in the Profile screen settings.",
+    "All tap targets must be at least 44x44pt. Use Pressable with proper hitSlop where necessary."
+  ]
+}
