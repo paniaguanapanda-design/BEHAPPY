@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -11,7 +11,7 @@ import { queryClient } from "@/src/query-client";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { I18nProvider } from "@/src/i18n";
 import { ToastProvider } from "@/src/toast";
-import { Loading } from "@/src/ui";
+import { AppSplash } from "@/src/AppSplash";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/revenuecat";
 
 LogBox.ignoreAllLogs(true);
@@ -26,6 +26,12 @@ function Gate() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [splashDone, setSplashDone] = useState(false);
+
+  useEffect(() => {
+    const h = setTimeout(() => setSplashDone(true), 1600);
+    return () => clearTimeout(h);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -34,7 +40,7 @@ function Gate() {
     else if (user && onLogin) router.replace("/");
   }, [user, loading, segments, router]);
 
-  if (loading) return <Loading />;
+  if (loading || !splashDone) return <AppSplash />;
   return (
     <SubscriptionProvider userId={user?.user_id ?? null}>
       <Stack screenOptions={{ headerShown: false }}>

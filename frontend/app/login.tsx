@@ -12,6 +12,7 @@ import { Button } from "@/src/ui";
 import { makeStyles, useTheme } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
 
+const LOGO = require("@/assets/images/behappy-logo.png");
 const HERO = "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1000&q=80";
 
 export default function Login() {
@@ -59,11 +60,10 @@ export default function Login() {
           <Image source={{ uri: HERO }} style={StyleSheetAbs} contentFit="cover" />
           <LinearGradient colors={["transparent", colors.surfaceInverse]} style={StyleSheetAbs} />
           <View style={[styles.heroTop, { paddingTop: insets.top + 12 }]}>
-            <View style={styles.logo}>
-              <Ionicons name="construct" size={18} color={colors.onBrandPrimary} />
-              <Text style={styles.logoText}>FixAI</Text>
+            <View style={styles.logo} testID="app-logo">
+              <Image source={LOGO} style={styles.logoImg} contentFit="contain" />
+              <Text style={styles.logoText}>BE HAPPY</Text>
             </View>
-            <LangToggle dark />
           </View>
           <View style={styles.heroBottom}>
             <Text style={styles.title}>{t("login_title")}</Text>
@@ -105,6 +105,10 @@ export default function Login() {
           <Pressable testID="toggle-auth-mode" onPress={() => setMode(mode === "in" ? "up" : "in")} style={styles.switch}>
             <Text style={styles.switchText}>{mode === "in" ? t("no_account") : t("have_account")}</Text>
           </Pressable>
+          <View style={styles.langBottom}>
+            <Ionicons name="language" size={18} color={colors.muted} />
+            <LangToggle />
+          </View>
         </View>
       </KeyboardAwareScrollView>
     </View>
@@ -116,12 +120,14 @@ const StyleSheetAbs = { position: "absolute" as const, top: 0, left: 0, right: 0
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   hero: { height: 380, justifyContent: "space-between", overflow: "hidden" },
-  heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24 },
-  logo: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.brandPrimary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-  logoText: { color: c.onBrandPrimary, fontWeight: "800", fontSize: 16 },
-  heroBottom: { padding: 24, gap: 8 },
-  title: { color: c.onSurfaceInverse, fontSize: 32, fontWeight: "800", letterSpacing: -0.8, lineHeight: 36 },
-  sub: { color: c.onSurfaceInverse, opacity: 0.85, fontSize: 15, lineHeight: 21 },
+  heroTop: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
+  logo: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.surface, paddingLeft: 6, paddingRight: 16, paddingVertical: 6, borderRadius: 999 },
+  logoImg: { width: 32, height: 32, borderRadius: 16 },
+  logoText: { color: c.onSurface, fontWeight: "800", fontSize: 16, letterSpacing: 0.5 },
+  heroBottom: { padding: 24, gap: 8, alignItems: "center" },
+  title: { color: c.onSurfaceInverse, fontSize: 32, fontWeight: "800", letterSpacing: -0.8, lineHeight: 36, textAlign: "center" },
+  sub: { color: c.onSurfaceInverse, opacity: 0.85, fontSize: 15, lineHeight: 21, textAlign: "center" },
+  langBottom: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 },
   form: { padding: 24, gap: 12 },
   input: {
     height: 52,

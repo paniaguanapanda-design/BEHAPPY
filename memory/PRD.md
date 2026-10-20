@@ -30,3 +30,7 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 - Quotes (ofertas): specialist sends price/description/time from requests or chat; client accepts/rejects → request accepted with agreed price
 - Login/Home hero image changed to a well-kept house
 - Backlog: Stripe auto-renew subscriptions, expiry reminder banner, invoices history
+
+## Iteration 3 (2026-06)
+- Rebrand to BE HAPPY: app name, icon/adaptive icon/favicon from user logo, native splash (behappy-splash.png, bg #F8F5EE) + in-app animated splash (src/AppSplash.tsx, 1.6s)
+- Login: centered logo + title, language toggle moved to bottom
