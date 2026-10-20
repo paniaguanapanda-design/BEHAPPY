@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from "@/src/auth";
 import { I18nProvider } from "@/src/i18n";
 import { ToastProvider } from "@/src/toast";
 import { AppSplash } from "@/src/AppSplash";
+import { CameraPermissionPrompt } from "@/src/CameraPermissionPrompt";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/revenuecat";
 
 LogBox.ignoreAllLogs(true);
@@ -46,6 +47,7 @@ function Gate() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="scan" options={{ animation: "slide_from_bottom" }} />
       </Stack>
+      {user && <CameraPermissionPrompt />}
     </SubscriptionProvider>
   );
 }

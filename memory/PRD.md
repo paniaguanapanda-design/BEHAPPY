@@ -34,3 +34,6 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 ## Iteration 3 (2026-06)
 - Rebrand to BE HAPPY: app name, icon/adaptive icon/favicon from user logo, native splash (behappy-splash.png, bg #F8F5EE) + in-app animated splash (src/AppSplash.tsx, 1.6s)
 - Login: centered logo + title, language toggle moved to bottom
+
+## Iteration 4 (2026-06)
+- Camera permission prompt (bottom sheet) shown every time the user enters the app (launch + return from background) while camera not granted; "Abrir ajustes" when permanently denied (src/CameraPermissionPrompt.tsx)
