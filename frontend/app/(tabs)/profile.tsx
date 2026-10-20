@@ -9,6 +9,7 @@ import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 import { LangToggle } from "@/src/LangToggle";
+import { useMembership } from "@/src/membership";
 
 type RowProps = { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; sub?: string; onPress: () => void; testID: string; danger?: boolean };
 
@@ -37,6 +38,7 @@ export default function Profile() {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const isSpec = user?.role === "specialist" && user.specialist_id;
+  const membership = useMembership(!!isSpec);
 
   return (
     <View style={styles.root}>
@@ -73,6 +75,14 @@ export default function Profile() {
               <Row testID="my-specialist-profile-row" icon="id-card-outline" title={t("my_specialist_profile")} onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: user!.specialist_id! } })} />
               <View style={styles.sep} />
               <Row testID="edit-specialist-row" icon="create-outline" title={t("edit_specialist")} onPress={() => router.push("/specialist-form")} />
+              <View style={styles.sep} />
+              <Row
+                testID="membership-row"
+                icon="ribbon-outline"
+                title={t("membership")}
+                sub={membership.data ? (membership.data.active ? `${t("active_until")} ${new Date(membership.data.expires_at!).toLocaleDateString()}` : t("mb_inactive")) : undefined}
+                onPress={() => router.push("/membership")}
+              />
             </>
           ) : (
             <Row testID="become-specialist-row" icon="briefcase-outline" title={t("become_specialist")} sub={t("become_specialist_sub")} onPress={() => router.push("/specialist-form")} />

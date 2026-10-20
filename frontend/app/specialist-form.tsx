@@ -158,6 +158,12 @@ export default function SpecialistForm() {
           <Text style={styles.hint}>{t("save_first")}</Text>
         ) : (
           <>
+            {!s.membership_active && (
+              <View style={styles.mbBanner} testID="form-membership-banner">
+                <Text style={styles.hint}>{t("hidden_profile")}</Text>
+                <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="form-activate-membership-button" />
+              </View>
+            )}
             <View style={{ marginTop: 24, gap: 12 }}>
               <SectionTitle>{t("portfolio")}</SectionTitle>
               <TextInput testID="portfolio-caption-input" style={styles.input} placeholder={t("caption")} placeholderTextColor={colors.muted} value={caption} onChangeText={setCaption} />
@@ -234,4 +240,5 @@ const useStyles = makeStyles((c) => ({
   verifyBox: { marginTop: 24, gap: 12, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
   docPick: { height: 140, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.borderStrong, alignItems: "center", justifyContent: "center", gap: 6, overflow: "hidden" },
   docText: { color: c.brandPrimary, fontWeight: "600" },
+  mbBanner: { marginTop: 16, padding: 16, borderRadius: 16, backgroundColor: c.brandSecondary, gap: 12 },
 }));

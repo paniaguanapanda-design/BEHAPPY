@@ -12,7 +12,7 @@ import { Button } from "@/src/ui";
 import { makeStyles, useTheme } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
 
-const HERO = "https://images.unsplash.com/photo-1686890363933-4a1125d4e3b0?w=1000&q=80";
+const HERO = "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1000&q=80";
 
 export default function Login() {
   const styles = useStyles();

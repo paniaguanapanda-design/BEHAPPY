@@ -145,6 +145,12 @@ export default function SpecialistProfile() {
         </View>
 
         <View style={styles.content}>
+          {isMe && !s.membership_active && (
+            <View style={styles.hiddenBanner} testID="hidden-profile-banner">
+              <Text style={styles.body}>{t("hidden_profile")}</Text>
+              <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="activate-membership-button" />
+            </View>
+          )}
           <View style={{ gap: 8 }}>
             <SectionTitle>{t("about")}</SectionTitle>
             <Text style={styles.body}>{s.bio || "-"}</Text>
@@ -214,6 +220,10 @@ export default function SpecialistProfile() {
       <BlurView intensity={60} tint="light" style={[styles.cta, { paddingBottom: insets.bottom + 12 }]}>
         {isMe ? (
           <Button style={{ flex: 1 }} title={t("edit_profile")} icon="create-outline" onPress={() => router.push("/specialist-form")} testID="edit-own-profile-button" />
+        ) : !s.membership_active ? (
+          <Text style={[styles.muted, { flex: 1, textAlign: "center", paddingVertical: 14 }]} testID="specialist-unavailable">
+            {t("not_available")}
+          </Text>
         ) : (
           <>
             <Pressable testID="call-specialist-button" style={styles.iconBtn} onPress={() => Linking.openURL(`tel:${s.phone}`)}>
@@ -313,4 +323,5 @@ const useStyles = makeStyles((c) => ({
   input: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: c.onSurface },
   recRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
   previewBg: { flex: 1, backgroundColor: c.surfaceInverse, alignItems: "center", justifyContent: "center" },
+  hiddenBanner: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceTertiary, borderLeftWidth: 4, borderLeftColor: c.warning, gap: 12 },
 }));

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -10,6 +10,8 @@ import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
+import { Quote, QuoteCard, QuoteModal } from "@/src/quotes";
+import { useMembership } from "@/src/membership";
 
 export default function Requests() {
   const styles = useStyles();
@@ -20,6 +22,8 @@ export default function Requests() {
   const { t } = useI18n();
   const toast = useToast();
   const q = useQuery({ queryKey: ["requests"], queryFn: () => api<any[]>("/requests") });
+  const membership = useMembership();
+  const [quoteFor, setQuoteFor] = useState<string | null>(null);
 
   const statusColor: Record<string, string> = {
     pending: colors.warning, accepted: colors.info, completed: colors.success, rejected: colors.error, cancelled: colors.muted,
@@ -76,6 +80,14 @@ export default function Requests() {
                   {[item.address, item.preferred_date].filter(Boolean).join(" · ")}
                 </Text>
               ) : null}
+              {item.agreed_price ? (
+                <Text style={styles.diag}>
+                  {t("agreed_price")}: {Number(item.agreed_price).toFixed(2).replace(".", ",")} €
+                </Text>
+              ) : null}
+              {item.quotes?.map((qt: Quote) => (
+                <QuoteCard key={qt.quote_id} quote={qt} canAnswer={!asSpec} />
+              ))}
               <View style={styles.actions}>
                 <Button
                   variant="ghost"
@@ -85,6 +97,16 @@ export default function Requests() {
                   onPress={() => router.push({ pathname: "/chat/[id]", params: { id: item.conversation_id } })}
                   testID={`request-chat-${item.request_id}`}
                 />
+                {asSpec && (item.status === "pending" || item.status === "accepted") && (
+                  <Button
+                    variant="secondary"
+                    icon="pricetag-outline"
+                    title={t("send_quote")}
+                    style={styles.actionBtn}
+                    onPress={() => (membership.data?.active ? setQuoteFor(item.request_id) : router.push("/membership"))}
+                    testID={`request-quote-${item.request_id}`}
+                  />
+                )}
                 {asSpec && item.status === "pending" && (
                   <>
                     <Button title={t("accept")} style={styles.actionBtn} onPress={() => update(item.request_id, "accepted")} testID={`request-accept-${item.request_id}`} />
@@ -111,6 +133,7 @@ export default function Requests() {
           );
         }}
       />
+      <QuoteModal requestId={quoteFor} onClose={() => setQuoteFor(null)} />
     </View>
   );
 }

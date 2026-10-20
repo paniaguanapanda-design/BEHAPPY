@@ -23,6 +23,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, TextDelta, StreamDone  # noqa: E402
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest  # noqa: E402
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -368,10 +369,21 @@ class ReviewIn(BaseModel):
     recommend: bool = True
 
 
+def membership_active(s: dict) -> bool:
+    exp = s.get("membership_expires_at")
+    return bool(exp) and exp > iso(now())
+
+
 async def specialist_out(s: dict) -> dict:
     s.pop("verification_document", None)
     s.pop("document_number", None)
+    s["membership_active"] = membership_active(s)
     return s
+
+
+async def require_active_specialist(spec: dict):
+    if not membership_active(spec):
+        raise HTTPException(403, "Specialist membership inactive")
 
 
 @api.get("/categories")
@@ -405,7 +417,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
 @api.get("/specialists")
 async def list_specialists(request: Request, category: Optional[str] = None, q: Optional[str] = None):
     await current_user(request)
-    flt = {}
+    flt = {"membership_expires_at": {"$gt": iso(now())}}
     if category and category != "all":
         flt["category"] = category
     if q:
@@ -413,6 +425,8 @@ async def list_specialists(request: Request, category: Optional[str] = None, q: 
         flt["$or"] = [{"name": rx}, {"city": rx}, {"bio": rx}]
     items = await db.specialists.find(flt, {"_id": 0, "verification_document": 0, "document_number": 0}) \
         .sort([("verified", -1), ("rating_avg", -1)]).to_list(200)
+    for it in items:
+        it["membership_active"] = True
     return items
 
 
@@ -517,9 +531,9 @@ async def get_or_create_conversation(client_user: dict, spec: dict) -> dict:
     return conv
 
 
-async def push_message(conv: dict, sender: dict, text: str, kind: str = "text") -> dict:
+async def push_message(conv: dict, sender: dict, text: str, kind: str = "text", quote_id: Optional[str] = None) -> dict:
     msg = {"message_id": new_id("msg"), "conversation_id": conv["conversation_id"], "sender_id": sender["user_id"],
-           "sender_name": sender["name"], "text": text, "kind": kind, "created_at": iso(now())}
+           "sender_name": sender["name"], "text": text, "kind": kind, "quote_id": quote_id, "created_at": iso(now())}
     await db.messages.insert_one(msg)
     msg.pop("_id", None)
     other = [p for p in conv["participants"] if p != sender["user_id"]][0]
@@ -535,6 +549,10 @@ async def start_conversation(body: ConversationIn, request: Request):
     spec = await db.specialists.find_one({"specialist_id": body.specialist_id}, {"_id": 0})
     if not spec:
         raise HTTPException(404, "Specialist not found")
+    existing = await db.conversations.find_one({"client_id": user["user_id"], "specialist_id": spec["specialist_id"]}, {"_id": 0})
+    if existing:
+        return existing
+    await require_active_specialist(spec)
     return await get_or_create_conversation(user, spec)
 
 
@@ -562,7 +580,14 @@ async def list_messages(cid: str, request: Request):
     user = await current_user(request)
     await get_conv_for(cid, user)
     await db.conversations.update_one({"conversation_id": cid}, {"$set": {f"unread.{user['user_id']}": 0}})
-    return await db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    msgs = await db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    qids = [m["quote_id"] for m in msgs if m.get("quote_id")]
+    if qids:
+        quotes = {q["quote_id"]: q for q in await db.quotes.find({"quote_id": {"$in": qids}}, {"_id": 0}).to_list(500)}
+        for m in msgs:
+            if m.get("quote_id"):
+                m["quote"] = quotes.get(m["quote_id"])
+    return msgs
 
 
 @api.post("/conversations/{cid}/messages")
@@ -595,6 +620,7 @@ async def create_request(body: RequestIn, request: Request):
         raise HTTPException(404, "Specialist not found")
     if not body.description.strip():
         raise HTTPException(400, "Description required")
+    await require_active_specialist(spec)
     diag_title = None
     if body.diagnosis_id:
         d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id}, {"_id": 0, "title": 1})
@@ -614,8 +640,12 @@ async def create_request(body: RequestIn, request: Request):
 @api.get("/requests")
 async def list_requests(request: Request):
     user = await current_user(request)
-    return await db.service_requests.find({"$or": [{"client_id": user["user_id"]}, {"specialist_user_id": user["user_id"]}]},
+    reqs = await db.service_requests.find({"$or": [{"client_id": user["user_id"]}, {"specialist_user_id": user["user_id"]}]},
                                           {"_id": 0}).sort("created_at", -1).to_list(200)
+    quotes = await db.quotes.find({"request_id": {"$in": [r["request_id"] for r in reqs]}}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    for r in reqs:
+        r["quotes"] = [q for q in quotes if q["request_id"] == r["request_id"]]
+    return reqs
 
 
 @api.patch("/requests/{rid}")
@@ -628,10 +658,192 @@ async def update_request(rid: str, body: RequestStatusIn, request: Request):
         {"cancelled"} if req["client_id"] == user["user_id"] else set()
     if body.status not in allowed:
         raise HTTPException(403, "Not allowed")
+    if body.status == "accepted":
+        await require_active_specialist(await db.specialists.find_one({"specialist_id": req["specialist_id"]}, {"_id": 0}))
     await db.service_requests.update_one({"request_id": rid}, {"$set": {"status": body.status, "updated_at": iso(now())}})
     if body.status == "completed":
         await db.specialists.update_one({"specialist_id": req["specialist_id"]}, {"$inc": {"jobs_completed": 1}})
     return {**req, "status": body.status}
+
+
+# ---------------- Quotes (ofertas) ----------------
+class QuoteIn(BaseModel):
+    price: float = Field(gt=0)
+    description: str
+    estimated_time: str = ""
+
+
+class QuoteStatusIn(BaseModel):
+    status: str
+
+
+@api.post("/requests/{rid}/quotes")
+async def create_quote(rid: str, body: QuoteIn, request: Request):
+    user = await current_user(request)
+    req = await db.service_requests.find_one({"request_id": rid}, {"_id": 0})
+    if not req or req["specialist_user_id"] != user["user_id"]:
+        raise HTTPException(404, "Request not found")
+    if req["status"] not in ("pending", "accepted"):
+        raise HTTPException(400, "Request is closed")
+    spec = await db.specialists.find_one({"specialist_id": req["specialist_id"]}, {"_id": 0})
+    await require_active_specialist(spec)
+    if not body.description.strip():
+        raise HTTPException(400, "Description required")
+    quote = {"quote_id": new_id("quote"), "request_id": rid, "conversation_id": req["conversation_id"],
+             "specialist_id": req["specialist_id"], "specialist_name": req["specialist_name"], "client_id": req["client_id"],
+             "price": round(body.price, 2), "currency": "EUR", "description": body.description.strip(),
+             "estimated_time": body.estimated_time, "status": "pending", "created_at": iso(now())}
+    await db.quotes.insert_one(quote)
+    quote.pop("_id", None)
+    conv = await db.conversations.find_one({"conversation_id": req["conversation_id"]}, {"_id": 0})
+    await push_message(conv, user, f"[QUOTE] {quote['price']:.2f} EUR — {quote['description']}", kind="quote", quote_id=quote["quote_id"])
+    return quote
+
+
+@api.patch("/quotes/{qid}")
+async def update_quote(qid: str, body: QuoteStatusIn, request: Request):
+    user = await current_user(request)
+    q = await db.quotes.find_one({"quote_id": qid}, {"_id": 0})
+    if not q or q["client_id"] != user["user_id"]:
+        raise HTTPException(404, "Quote not found")
+    if body.status not in ("accepted", "rejected"):
+        raise HTTPException(400, "Invalid status")
+    if q["status"] != "pending":
+        raise HTTPException(400, "Quote already answered")
+    await db.quotes.update_one({"quote_id": qid}, {"$set": {"status": body.status, "answered_at": iso(now())}})
+    if body.status == "accepted":
+        await db.quotes.update_many({"request_id": q["request_id"], "quote_id": {"$ne": qid}, "status": "pending"},
+                                    {"$set": {"status": "rejected"}})
+        await db.service_requests.update_one({"request_id": q["request_id"]},
+                                             {"$set": {"status": "accepted", "accepted_quote_id": qid, "agreed_price": q["price"]}})
+    conv = await db.conversations.find_one({"conversation_id": q["conversation_id"]}, {"_id": 0})
+    await push_message(conv, user, f"[QUOTE_{body.status.upper()}] {q['price']:.2f} EUR")
+    return {**q, "status": body.status}
+
+
+# ---------------- Membership (Stripe + RevenueCat) ----------------
+PLANS = {"monthly": {"amount": 19.99, "days": 30}, "yearly": {"amount": 199.99, "days": 365}}
+
+
+class CheckoutIn(BaseModel):
+    plan: str
+    origin_url: str
+
+
+class RCSyncIn(BaseModel):
+    plan: str
+    expiration_date: Optional[str] = None
+
+
+def stripe_client(request: Request, origin: Optional[str] = None) -> StripeCheckout:
+    host = (origin or str(request.base_url)).rstrip("/")
+    return StripeCheckout(api_key=os.environ["STRIPE_API_KEY"], webhook_url=f"{host}/api/webhook/stripe")
+
+
+async def activate_membership(user_id: str, plan: str, source: str, expires_at: Optional[datetime] = None):
+    current = await db.memberships.find_one({"user_id": user_id}, {"_id": 0})
+    if expires_at is None:
+        base = now()
+        if current and current.get("expires_at") and current["expires_at"] > iso(base):
+            base = datetime.fromisoformat(current["expires_at"])
+        expires_at = base + timedelta(days=PLANS[plan]["days"])
+    exp = iso(expires_at)
+    await db.memberships.update_one({"user_id": user_id}, {"$set": {
+        "user_id": user_id, "plan": plan, "source": source, "expires_at": exp, "updated_at": iso(now())}}, upsert=True)
+    await db.specialists.update_one({"user_id": user_id}, {"$set": {"membership_expires_at": exp, "membership_plan": plan}})
+    return exp
+
+
+async def membership_payload(user_id: str) -> dict:
+    m = await db.memberships.find_one({"user_id": user_id}, {"_id": 0}) or {}
+    if not m.get("expires_at"):
+        s = await db.specialists.find_one({"user_id": user_id}, {"_id": 0, "membership_expires_at": 1, "membership_plan": 1}) or {}
+        if s.get("membership_expires_at"):
+            m = {"expires_at": s["membership_expires_at"], "plan": s.get("membership_plan"), "source": "admin"}
+    exp = m.get("expires_at")
+    return {"active": bool(exp and exp > iso(now())), "plan": m.get("plan"), "source": m.get("source"), "expires_at": exp,
+            "plans": {k: v["amount"] for k, v in PLANS.items()}, "currency": "EUR"}
+
+
+@api.get("/membership/me")
+async def membership_me(request: Request):
+    user = await current_user(request)
+    return await membership_payload(user["user_id"])
+
+
+@api.post("/membership/checkout")
+async def membership_checkout(body: CheckoutIn, request: Request):
+    user = await current_user(request)
+    if body.plan not in PLANS:
+        raise HTTPException(400, "Invalid plan")
+    if not await db.specialists.find_one({"user_id": user["user_id"]}):
+        raise HTTPException(400, "Create your specialist profile first")
+    origin = body.origin_url.rstrip("/")
+    amount = PLANS[body.plan]["amount"]
+    sc = stripe_client(request, origin)
+    session = await sc.create_checkout_session(CheckoutSessionRequest(
+        amount=amount + 0.004,  # library truncates int(amount*100); offset avoids 19.99 -> 1998 float error
+        success_url=f"{origin}/membership?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/membership",
+        metadata={"user_id": user["user_id"], "plan": body.plan, "type": "specialist_membership"}))
+    await db.payment_transactions.insert_one({
+        "session_id": session.session_id, "user_id": user["user_id"], "email": user["email"], "plan": body.plan,
+        "amount": amount, "currency": "eur", "payment_status": "initiated", "status": "open", "processed": False,
+        "created_at": iso(now())})
+    return {"url": session.url, "session_id": session.session_id}
+
+
+async def process_paid_session(session_id: str, payment_status: str, status: str):
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx:
+        return None
+    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": payment_status, "status": status}})
+    if payment_status == "paid":
+        res = await db.payment_transactions.update_one({"session_id": session_id, "processed": False}, {"$set": {"processed": True}})
+        if res.modified_count == 1:
+            await activate_membership(tx["user_id"], tx["plan"], "stripe")
+    return tx
+
+
+@api.get("/membership/checkout/status/{session_id}")
+async def membership_status(session_id: str, request: Request):
+    user = await current_user(request)
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx or tx["user_id"] != user["user_id"]:
+        raise HTTPException(404, "Session not found")
+    st = await stripe_client(request).get_checkout_status(session_id)
+    await process_paid_session(session_id, st.payment_status, st.status)
+    return {"payment_status": st.payment_status, "status": st.status, "membership": await membership_payload(user["user_id"])}
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    try:
+        ev = await stripe_client(request).handle_webhook(body, request.headers.get("Stripe-Signature"))
+    except Exception as e:
+        logger.warning("stripe webhook error: %s", e)
+        raise HTTPException(400, "Invalid webhook")
+    if ev.session_id:
+        await process_paid_session(ev.session_id, ev.payment_status, "complete" if ev.payment_status == "paid" else "open")
+    return {"received": True}
+
+
+@api.post("/membership/revenuecat-sync")
+async def revenuecat_sync(body: RCSyncIn, request: Request):
+    """Mirror the in-app (RevenueCat) entitlement expiry so the specialist is listed for other users."""
+    user = await current_user(request)
+    if body.plan not in PLANS:
+        raise HTTPException(400, "Invalid plan")
+    exp = None
+    if body.expiration_date:
+        exp = datetime.fromisoformat(body.expiration_date.replace("Z", "+00:00"))
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+    else:
+        exp = now() + timedelta(days=PLANS[body.plan]["days"])
+    await activate_membership(user["user_id"], body.plan, "revenuecat", exp)
+    return await membership_payload(user["user_id"])
 
 
 # ---------------- Seed ----------------
@@ -700,6 +912,9 @@ async def startup():
     await db.messages.create_index("conversation_id")
     await db.files.create_index("storage_path")
     await seed()
+    await db.specialists.update_many({"seed": True, "membership_expires_at": {"$exists": False}},
+                                     {"$set": {"membership_expires_at": iso(now() + timedelta(days=3650)), "membership_plan": "yearly"}})
+    await db.payment_transactions.create_index("session_id", unique=True)
     try:
         init_storage()
     except Exception as e:

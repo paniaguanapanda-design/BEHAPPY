@@ -23,3 +23,10 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 ## Backlog
 - P1: manual admin verification review; push-free in-app notification badges; location/distance sorting
 - P2: specialist subscription plans (monetization), quotes/pricing in requests, photo attachments in chat
+
+## Iteration 2 (2026-06)
+- Specialist membership: monthly 19,99 € / yearly 199,99 € — Stripe Checkout (one-time per period, status polling + webhook) and RevenueCat in-app subscriptions (Test Store in preview; entitlement mirrored to backend via /api/membership/revenuecat-sync)
+- Gating: specialists without active membership hidden from directory, can't receive requests/new chats, can't accept or send quotes
+- Quotes (ofertas): specialist sends price/description/time from requests or chat; client accepts/rejects → request accepted with agreed price
+- Login/Home hero image changed to a well-kept house
+- Backlog: Stripe auto-renew subscriptions, expiry reminder banner, invoices history

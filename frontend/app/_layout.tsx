@@ -12,8 +12,15 @@ import { AuthProvider, useAuth } from "@/src/auth";
 import { I18nProvider } from "@/src/i18n";
 import { ToastProvider } from "@/src/toast";
 import { Loading } from "@/src/ui";
+import { initializeRevenueCat, SubscriptionProvider } from "@/src/revenuecat";
 
 LogBox.ignoreAllLogs(true);
+
+try {
+  initializeRevenueCat();
+} catch (err) {
+  console.warn("RevenueCat unavailable:", err);
+}
 
 function Gate() {
   const { user, loading } = useAuth();
@@ -29,9 +36,11 @@ function Gate() {
 
   if (loading) return <Loading />;
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="scan" options={{ animation: "slide_from_bottom" }} />
-    </Stack>
+    <SubscriptionProvider userId={user?.user_id ?? null}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="scan" options={{ animation: "slide_from_bottom" }} />
+      </Stack>
+    </SubscriptionProvider>
   );
 }
 

@@ -12,6 +12,8 @@ import { useToast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 import { timeLabel } from "@/src/time";
+import { QuoteCard, QuoteModal } from "@/src/quotes";
+import { useMembership } from "@/src/membership";
 
 export default function Chat() {
   const styles = useStyles();
@@ -32,6 +34,10 @@ export default function Chat() {
   const iAmClient = c?.client_id === user?.user_id;
   const otherName = c ? (iAmClient ? c.specialist_name : c.client_name) : "";
   const otherPic = c ? (iAmClient ? c.specialist_avatar : c.client_picture) : null;
+  const reqs = useQuery({ queryKey: ["requests"], queryFn: () => api<any[]>("/requests"), enabled: !!c && !iAmClient });
+  const membership = useMembership(!!c && !iAmClient);
+  const openReq = reqs.data?.find((r) => r.conversation_id === id && (r.status === "pending" || r.status === "accepted"));
+  const [quoteFor, setQuoteFor] = useState<string | null>(null);
 
   useEffect(() => {
     setTimeout(() => list.current?.scrollToEnd({ animated: true }), 100);
@@ -82,6 +88,22 @@ export default function Chat() {
           onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
           renderItem={({ item }) => {
             const mine = item.sender_id === user?.user_id;
+            if (item.kind === "quote" && item.quote)
+              return (
+                <View style={{ maxWidth: "85%", alignSelf: mine ? "flex-end" : "flex-start" }} testID={`message-${item.message_id}`}>
+                  <QuoteCard quote={item.quote} canAnswer={item.quote.client_id === user?.user_id} />
+                </View>
+              );
+            const quoteAnswer = /^\[QUOTE_(ACCEPTED|REJECTED)\]/.exec(item.text);
+            if (quoteAnswer)
+              return (
+                <View style={styles.sysMsg} testID={`message-${item.message_id}`}>
+                  <Ionicons name={quoteAnswer[1] === "ACCEPTED" ? "checkmark-circle" : "close-circle"} size={16} color={quoteAnswer[1] === "ACCEPTED" ? colors.success : colors.error} />
+                  <Text style={styles.sysText}>
+                    {t(quoteAnswer[1] === "ACCEPTED" ? "quote_accepted" : "quote_rejected")} · {item.text.replace(quoteAnswer[0], "").trim()}
+                  </Text>
+                </View>
+              );
             if (item.kind === "request")
               return (
                 <View style={[styles.reqCard, mine ? { alignSelf: "flex-end" } : { alignSelf: "flex-start" }]} testID={`message-${item.message_id}`}>
@@ -102,6 +124,15 @@ export default function Chat() {
           }}
         />
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
+          {!iAmClient && openReq ? (
+            <Pressable
+              testID="chat-send-quote-button"
+              onPress={() => (membership.data?.active ? setQuoteFor(openReq.request_id) : router.push("/membership"))}
+              style={styles.quoteBtn}
+            >
+              <Ionicons name="pricetag" size={20} color={colors.onBrandSecondary} />
+            </Pressable>
+          ) : null}
           <TextInput
             testID="chat-message-input"
             style={styles.input}
@@ -116,6 +147,7 @@ export default function Chat() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      <QuoteModal requestId={quoteFor} onClose={() => setQuoteFor(null)} />
     </View>
   );
 }
@@ -139,4 +171,7 @@ const useStyles = makeStyles((c) => ({
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 12, paddingTop: 8, backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border },
   input: { flex: 1, minHeight: 44, maxHeight: 120, borderRadius: 22, backgroundColor: c.surfaceTertiary, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: c.onSurface },
   send: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  quoteBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
+  sysMsg: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.surfaceTertiary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  sysText: { fontSize: 12, color: c.onSurfaceTertiary, fontWeight: "600" },
 }));
