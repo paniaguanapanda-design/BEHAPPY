@@ -295,7 +295,7 @@ async def diagnose(body: DiagnoseIn, request: Request):
         raise HTTPException(400, "Invalid image")
     lang = "Italian" if body.language == "it" else "Spanish"
     extra = f"User note: {body.note}" if body.note else ""
-    chat = LlmChat(api_key=EMERGENT_KEY, session_id=new_id("diag"),
+    chat = LlmChat(api_key=os.environ.get("GEMINI_API_KEY") or EMERGENT_KEY, session_id=new_id("diag"),
                    system_message="You are a precise home repair diagnostic assistant that outputs JSON only.").with_model("gemini", "gemini-3-flash-preview")
     text = ""
     try:

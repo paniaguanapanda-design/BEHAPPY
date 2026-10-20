@@ -37,3 +37,6 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 
 ## Iteration 4 (2026-06)
 - Camera permission prompt (bottom sheet) shown every time the user enters the app (launch + return from background) while camera not granted; "Abrir ajustes" when permanently denied (src/CameraPermissionPrompt.tsx)
+
+## Iteration 5 (2026-06)
+- AI diagnosis now uses the user's own Gemini API key (GEMINI_API_KEY in backend/.env), falls back to EMERGENT_LLM_KEY if absent. Model: gemini-3-flash-preview
