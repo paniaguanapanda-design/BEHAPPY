@@ -23,10 +23,10 @@ const es = {
   safety: "Seguridad", materials: "Materiales", tools: "Herramientas", steps: "Pasos a seguir",
   time: "Tiempo", cost: "Coste aprox.", when_pro: "Cuándo llamar a un profesional",
   how_solve: "¿Cómo quieres resolverlo?", diy: "Lo hago yo", diy_sub: "Sigue la guía paso a paso",
-  hire: "Contratar especialista", hire_sub: "Profesionales verificados cerca de ti", recommended: "Recomendado",
+  hire: "Contratar especialista", hire_sub: "Elige entre los especialistas de Turín", recommended: "Recomendado",
   not_home: "No parece un problema del hogar. Intenta otra foto.", retry: "Reintentar", scan_again: "Escanear de nuevo",
   diy_mode_on: "Modo hazlo tú: marca cada paso al completarlo", done_steps: "pasos completados",
-  specialists_title: "Especialistas", search_ph: "Buscar por nombre o ciudad", all: "Todos",
+  specialists_title: "Especialistas", search_ph: "Buscar por nombre", all: "Todos",
   for_problem: "Para tu problema", no_specialists: "No hay especialistas en esta categoría todavía.",
   verified: "Verificado", reviews: "reseñas", recommend: "recomiendan", jobs: "trabajos", years: "años exp.",
   about: "Sobre mí", portfolio: "Trabajos realizados", no_portfolio: "Aún no hay fotos de trabajos.",
@@ -52,9 +52,17 @@ const es = {
   cat_plumbing: "Fontanería", cat_electrical: "Electricidad", cat_carpentry: "Carpintería", cat_painting: "Pintura",
   cat_masonry: "Albañilería", cat_appliances: "Electrodomésticos", cat_hvac: "Climatización", cat_roofing: "Tejados", cat_general: "General",
   error_generic: "Algo salió mal", required: "Completa los campos obligatorios", edit_profile: "Editar perfil", back: "Atrás",
+  turin: "Turín", trades: "Oficios", see_specialists: "Ver especialistas",
+  easy_hint: "Puedes arreglarlo tú mismo siguiendo estos pasos.",
+  medium_hint: "Puedes intentarlo siguiendo estos pasos. Si no lo consigues, un especialista puede ayudarte.",
+  expert_hint: "Esta reparación necesita un especialista. Por tu seguridad no te damos instrucciones para hacerla.",
+  bio_short: "Reseña corta (máx. 300 caracteres)", caption_req: "Qué se hizo en este trabajo *",
+  need_photos: "Añade al menos una foto de un trabajo para aparecer en la lista.", choose_trades: "Elige al menos un oficio",
+  rate_specialist: "Valorar", rate_title: "Valora a este especialista", rating_once: "Solo puedes valorar una vez.",
+  comment_ph: "Una frase (opcional)", ratings: "valoraciones",
   membership: "Membresía", membership_title: "Membresía Profesional", membership_sub: "Activa tu perfil y empieza a recibir clientes",
-  mb_benefit_1: "Aparece en el directorio y en los resultados de cada diagnóstico", mb_benefit_2: "Recibe solicitudes de servicio y mensajes de clientes",
-  mb_benefit_3: "Envía presupuestos y cierra contratos", mb_benefit_4: "Insignia de verificado y reseñas visibles",
+  mb_benefit_1: "Aparece en el directorio y en los resultados de cada diagnóstico", mb_benefit_2: "Recibe mensajes de clientes",
+  mb_benefit_3: "Publica tu reseña y las fotos de tus trabajos", mb_benefit_4: "Insignia de verificado y reseñas visibles",
   monthly: "Mensual", yearly: "Anual", per_month: "/mes", per_year: "/año", two_months_free: "2 meses gratis",
   pay_card: "Pagar con tarjeta", pay_card_sub: "Pago seguro con Stripe. Renovación manual al final del periodo.",
   pay_inapp: "Suscribirme en la app", pay_inapp_sub: "App Store / Google Play. Renovación automática.",
@@ -90,10 +98,10 @@ const it: typeof es = {
   safety: "Sicurezza", materials: "Materiali", tools: "Attrezzi", steps: "Passaggi da seguire",
   time: "Tempo", cost: "Costo stimato", when_pro: "Quando chiamare un professionista",
   how_solve: "Come vuoi risolverlo?", diy: "Lo faccio io", diy_sub: "Segui la guida passo dopo passo",
-  hire: "Chiama un esperto", hire_sub: "Professionisti verificati vicino a te", recommended: "Consigliato",
+  hire: "Chiama un esperto", hire_sub: "Scegli tra gli specialisti di Torino", recommended: "Consigliato",
   not_home: "Non sembra un problema domestico. Prova un'altra foto.", retry: "Riprova", scan_again: "Scansiona di nuovo",
   diy_mode_on: "Modalità fai da te: spunta ogni passaggio completato", done_steps: "passaggi completati",
-  specialists_title: "Specialisti", search_ph: "Cerca per nome o città", all: "Tutti",
+  specialists_title: "Specialisti", search_ph: "Cerca per nome", all: "Tutti",
   for_problem: "Per il tuo problema", no_specialists: "Ancora nessuno specialista in questa categoria.",
   verified: "Verificato", reviews: "recensioni", recommend: "consigliano", jobs: "lavori", years: "anni esp.",
   about: "Chi sono", portfolio: "Lavori realizzati", no_portfolio: "Ancora nessuna foto dei lavori.",
@@ -119,9 +127,17 @@ const it: typeof es = {
   cat_plumbing: "Idraulica", cat_electrical: "Elettricità", cat_carpentry: "Falegnameria", cat_painting: "Pittura",
   cat_masonry: "Muratura", cat_appliances: "Elettrodomestici", cat_hvac: "Climatizzazione", cat_roofing: "Tetti", cat_general: "Generale",
   error_generic: "Qualcosa è andato storto", required: "Compila i campi obbligatori", edit_profile: "Modifica profilo", back: "Indietro",
+  turin: "Torino", trades: "Mestieri", see_specialists: "Vedi specialisti",
+  easy_hint: "Puoi ripararlo da solo seguendo questi passaggi.",
+  medium_hint: "Puoi provarci seguendo questi passaggi. Se non ci riesci, uno specialista può aiutarti.",
+  expert_hint: "Questa riparazione richiede uno specialista. Per la tua sicurezza non diamo istruzioni per farla.",
+  bio_short: "Breve presentazione (max 300 caratteri)", caption_req: "Cosa è stato fatto in questo lavoro *",
+  need_photos: "Aggiungi almeno una foto di un lavoro per comparire nell'elenco.", choose_trades: "Scegli almeno un mestiere",
+  rate_specialist: "Valuta", rate_title: "Valuta questo specialista", rating_once: "Puoi valutare una sola volta.",
+  comment_ph: "Una frase (facoltativa)", ratings: "valutazioni",
   membership: "Abbonamento", membership_title: "Abbonamento Professionale", membership_sub: "Attiva il tuo profilo e inizia a ricevere clienti",
-  mb_benefit_1: "Compari nell'elenco e nei risultati di ogni diagnosi", mb_benefit_2: "Ricevi richieste di intervento e messaggi dai clienti",
-  mb_benefit_3: "Invia preventivi e chiudi contratti", mb_benefit_4: "Badge verificato e recensioni visibili",
+  mb_benefit_1: "Compari nell'elenco e nei risultati di ogni diagnosi", mb_benefit_2: "Ricevi messaggi dai clienti",
+  mb_benefit_3: "Pubblica la tua presentazione e le foto dei tuoi lavori", mb_benefit_4: "Badge verificato e recensioni visibili",
   monthly: "Mensile", yearly: "Annuale", per_month: "/mese", per_year: "/anno", two_months_free: "2 mesi gratis",
   pay_card: "Paga con carta", pay_card_sub: "Pagamento sicuro con Stripe. Rinnovo manuale a fine periodo.",
   pay_inapp: "Abbonati nell'app", pay_inapp_sub: "App Store / Google Play. Rinnovo automatico.",
@@ -139,7 +155,11 @@ const it: typeof es = {
 
 export type TKey = keyof typeof es;
 const dict = { es, it };
-export const CATEGORIES = ["plumbing", "electrical", "carpentry", "painting", "masonry", "appliances", "hvac", "roofing", "general"] as const;
+export const CATEGORIES = ["plumbing", "electrical", "carpentry", "hvac", "appliances"] as const;
+
+export const tradesLabel = (cats: string[] | undefined, t: (k: string) => string) => (cats || []).map((c) => t(`cat_${c}`)).join(", ");
+export const captionFor = (p: { caption?: string; caption_es?: string; caption_it?: string }, lang: Lang) =>
+  (lang === "it" ? p.caption_it : p.caption_es) || p.caption || "";
 
 type Ctx = { lang: Lang; setLang: (l: Lang) => void; t: (k: TKey | string) => string };
 const I18nContext = createContext<Ctx>({ lang: "es", setLang: () => {}, t: (k) => String(k) });

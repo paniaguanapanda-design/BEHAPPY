@@ -53,7 +53,45 @@ async def health():
 
 api = APIRouter(prefix="/api")
 
-CATEGORIES = ["plumbing", "electrical", "carpentry", "painting", "masonry", "appliances", "hvac", "roofing", "general"]
+CATEGORIES = ["plumbing", "electrical", "carpentry", "hvac", "appliances"]
+LANG_NAME = {"es": "Spanish", "it": "Italian"}
+
+
+async def _gemini_once(api_key: str, prompt: str, image_b64: Optional[str]) -> dict:
+    chat = LlmChat(api_key=api_key, session_id=new_id("ai"),
+                   system_message="You output valid JSON only, no markdown.").with_model("gemini", "gemini-3-flash-preview")
+    if api_key != EMERGENT_KEY:  # Emergent proxy (openai-compatible) rejects reasoning_effort -> UnsupportedParamsError
+        chat = chat.with_params(reasoning_effort="low")  # default thinking took ~25s; low keeps quality at ~5s
+    text = ""
+    msg = UserMessage(text=prompt, file_contents=[ImageContent(image_base64=image_b64)] if image_b64 else None)
+    async for ev in chat.stream_message(msg):
+        if isinstance(ev, TextDelta):
+            text += ev.content
+        elif isinstance(ev, StreamDone):
+            break
+    return parse_json(text)
+
+
+async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
+    """Use the owner's Gemini key first; if it fails (e.g. daily quota reached) fall back to the Emergent universal key."""
+    own = os.environ.get("GEMINI_API_KEY")
+    if own:
+        try:
+            return await _gemini_once(own, prompt, image_b64)
+        except Exception as e:
+            logger.warning("own Gemini key failed, falling back to universal key: %s", str(e)[:200])
+    return await _gemini_once(EMERGENT_KEY, prompt, image_b64)
+
+
+async def caption_both(caption: str) -> dict:
+    caption = caption.strip()
+    try:
+        r = await gemini_json('Translate this short work-photo caption. Return {"es": "<Spanish>", "it": "<Italian>"}. '
+                              f'Caption: {json.dumps(caption, ensure_ascii=False)}')
+        return {"es": str(r.get("es") or caption), "it": str(r.get("it") or caption)}
+    except Exception as e:
+        logger.warning("caption translate failed: %s", e)
+        return {"es": caption, "it": caption}
 
 
 def now():
@@ -254,24 +292,43 @@ async def get_file(path: str, request: Request, token: Optional[str] = Query(Non
 
 # ---------------- AI Diagnosis ----------------
 DIAG_PROMPT = """You are an expert home repair technician. Analyze the photo of a household problem.
-Respond ONLY with valid JSON (no markdown), written entirely in {lang}, with this exact schema:
+Respond ONLY with valid JSON (no markdown). All text fields in {lang}, except title_es (Spanish) and title_it (Italian). Schema:
 {{
  "is_home_problem": true/false,
- "title": "short problem name",
+ "title_es": "short problem name in Spanish",
+ "title_it": "short problem name in Italian",
  "category": one of {cats},
  "description": "2-3 sentences explaining what is wrong and likely cause",
- "difficulty": "easy" | "medium" | "hard" | "expert",
- "diy_recommended": true/false,
+ "difficulty": "easy" | "medium" | "expert",
  "safety_warnings": ["..."],
  "materials": [{{"name": "...", "quantity": "..."}}],
  "tools": ["..."],
  "steps": [{{"title": "...", "detail": "..."}}],
  "estimated_time": "e.g. 1-2 h",
- "estimated_cost": "e.g. 20-40 EUR",
  "when_to_call_pro": "short sentence"
 }}
-Use 4-8 clear steps. If the image is not a home problem set is_home_problem false and still fill title/description explaining that.
+Difficulty rules:
+- easy: a non-expert can safely fix it alone. Give 4-8 clear steps.
+- medium: a handy person can try it. Give 4-8 clear steps; when_to_call_pro explains when to stop and call a specialist.
+- expert: needs a professional (gas, mains electricity, structural, refrigerant, anything risky). steps, materials and tools MUST be empty arrays. Never give repair instructions; safety_warnings only says what to avoid and how to stay safe until the specialist arrives.
+If the image is not a home problem set is_home_problem false and still fill title/description explaining that.
 {extra}"""
+
+TRANSLATABLE = ["description", "safety_warnings", "materials", "tools", "steps", "estimated_time", "when_to_call_pro"]
+
+
+def normalize_diagnosis(r: dict) -> dict:
+    if r.get("category") not in CATEGORIES:
+        r["category"] = "plumbing" if r.get("category") in ("general", None) else "carpentry"
+    diff = r.get("difficulty")
+    r["difficulty"] = "expert" if diff in ("hard", "expert") else diff if diff in ("easy", "medium") else "medium"
+    if r["difficulty"] == "expert":
+        r["steps"], r["materials"], r["tools"] = [], [], []
+    for k in ("steps", "materials", "tools", "safety_warnings"):
+        r[k] = r.get(k) or []
+    r["title_es"] = r.get("title_es") or r.get("title") or ""
+    r["title_it"] = r.get("title_it") or r.get("title") or ""
+    return r
 
 
 class DiagnoseIn(BaseModel):
@@ -310,25 +367,13 @@ async def diagnose(body: DiagnoseIn, request: Request):
     except Exception:
         raise HTTPException(400, "Invalid image")
     b64 = base64.b64encode(raw).decode()
-    lang = "Italian" if body.language == "it" else "Spanish"
+    lang = LANG_NAME.get(body.language, "Spanish")
     extra = f"User note: {body.note}" if body.note else ""
-    chat = LlmChat(api_key=os.environ.get("GEMINI_API_KEY") or EMERGENT_KEY, session_id=new_id("diag"),
-                   system_message="You are a precise home repair diagnostic assistant that outputs JSON only.").with_model("gemini", "gemini-3-flash-preview") \
-        .with_params(reasoning_effort="low")  # default thinking took ~25s; low keeps quality at ~5s
-    text = ""
     try:
-        async for ev in chat.stream_message(UserMessage(text=DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra),
-                                                        file_contents=[ImageContent(image_base64=b64)])):
-            if isinstance(ev, TextDelta):
-                text += ev.content
-            elif isinstance(ev, StreamDone):
-                break
-        result = parse_json(text)
+        result = normalize_diagnosis(await gemini_json(DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra), b64))
     except Exception as e:
         logger.exception("diagnose failed: %s", e)
-        raise HTTPException(502, "AI analysis failed, please retry")
-    if result.get("category") not in CATEGORIES:
-        result["category"] = "general"
+        raise HTTPException(503, "AI analysis failed, please retry")
     image_path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4().hex}.jpg"
 
     async def _store():
@@ -354,27 +399,40 @@ async def list_diagnoses(request: Request):
 
 
 @api.get("/diagnoses/{diagnosis_id}")
-async def get_diagnosis(diagnosis_id: str, request: Request):
+async def get_diagnosis(diagnosis_id: str, request: Request, lang: Optional[str] = None):
     user = await current_user(request)
     d = await db.diagnoses.find_one({"diagnosis_id": diagnosis_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Not found")
-    if d["user_id"] != user["user_id"] and user.get("role") != "specialist":
+    if d["user_id"] != user["user_id"]:
         raise HTTPException(403, "Forbidden")
+    lang = lang if lang in LANG_NAME else d.get("language", "es")
+    if lang != d.get("language"):
+        cached = (d.get("i18n") or {}).get(lang)
+        if not cached:
+            src = {k: d.get(k) for k in TRANSLATABLE}
+            try:
+                cached = await gemini_json(f"Translate every string value of this JSON into {LANG_NAME[lang]}. Keep the same keys and "
+                                           f"structure, return JSON only.\n{json.dumps(src, ensure_ascii=False)}")
+                cached = {k: cached.get(k, src[k]) for k in TRANSLATABLE}
+                await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {f"i18n.{lang}": cached}})
+            except Exception as e:
+                logger.warning("translate diagnosis failed: %s", e)
+                cached = {}
+        d.update(cached)
+    d.pop("i18n", None)
+    d["title"] = d.get(f"title_{lang}") or d.get("title")
+    d["view_language"] = lang
     return d
 
 
 # ---------------- Specialists ----------------
 class SpecialistIn(BaseModel):
     name: str
-    category: str
-    bio: str = ""
+    categories: List[str]
+    bio: str = Field("", max_length=300)
     phone: str
     whatsapp: Optional[str] = None
-    city: str = ""
-    years_experience: int = 0
-    hourly_rate: Optional[str] = None
-    avatar: Optional[str] = None
 
 
 class PortfolioIn(BaseModel):
@@ -389,8 +447,7 @@ class VerifyIn(BaseModel):
 
 class ReviewIn(BaseModel):
     rating: int = Field(ge=1, le=5)
-    comment: str = ""
-    recommend: bool = True
+    comment: str = Field("", max_length=200)
 
 
 def membership_active(s: dict) -> bool:
@@ -402,6 +459,8 @@ async def specialist_out(s: dict) -> dict:
     s.pop("verification_document", None)
     s.pop("document_number", None)
     s["membership_active"] = membership_active(s)
+    if (s.get("reviews_count") or 0) < 3:
+        s["rating_avg"] = None  # average only shown from 3 ratings
     return s
 
 
@@ -418,11 +477,14 @@ async def categories():
 @api.post("/specialists")
 async def upsert_specialist(body: SpecialistIn, request: Request):
     user = await current_user(request)
-    if body.category not in CATEGORIES:
-        raise HTTPException(400, "Invalid category")
-    if not body.phone.strip():
-        raise HTTPException(400, "Phone required")
+    cats = [c for c in dict.fromkeys(body.categories) if c in CATEGORIES]
+    if not cats:
+        raise HTTPException(400, "Choose at least one trade")
+    if not body.name.strip() or not body.phone.strip():
+        raise HTTPException(400, "Name and phone required")
     data = body.model_dump()
+    data["categories"] = cats
+    data["bio"] = data["bio"].strip()
     data["whatsapp"] = data.get("whatsapp") or data["phone"]
     existing = await db.specialists.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if existing:
@@ -432,8 +494,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
         sid = new_id("spec")
         await db.specialists.insert_one({"specialist_id": sid, "user_id": user["user_id"], **data,
                                          "portfolio": [], "verified": False, "verification_status": "none",
-                                         "rating_avg": 0.0, "reviews_count": 0, "recommend_count": 0,
-                                         "jobs_completed": 0, "created_at": iso(now())})
+                                         "rating_avg": 0.0, "reviews_count": 0, "created_at": iso(now())})
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "specialist", "specialist_id": sid}})
     return await specialist_out(await db.specialists.find_one({"specialist_id": sid}, {"_id": 0}))
 
@@ -441,17 +502,15 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
 @api.get("/specialists")
 async def list_specialists(request: Request, category: Optional[str] = None, q: Optional[str] = None):
     await current_user(request)
-    flt = {"membership_expires_at": {"$gt": iso(now())}}
+    # Showcase: only members with at least one work photo; no distance sorting, no assignment
+    flt = {"membership_expires_at": {"$gt": iso(now())}, "portfolio.0": {"$exists": True}}
     if category and category != "all":
-        flt["category"] = category
+        flt["categories"] = category
     if q:
-        rx = {"$regex": re.escape(q), "$options": "i"}
-        flt["$or"] = [{"name": rx}, {"city": rx}, {"bio": rx}]
+        flt["name"] = {"$regex": re.escape(q.strip()), "$options": "i"}
     items = await db.specialists.find(flt, {"_id": 0, "verification_document": 0, "document_number": 0}) \
-        .sort([("verified", -1), ("rating_avg", -1)]).to_list(200)
-    for it in items:
-        it["membership_active"] = True
-    return items
+        .sort([("verified", -1), ("created_at", 1)]).to_list(200)
+    return [await specialist_out(it) for it in items]
 
 
 @api.get("/specialists/me")
@@ -463,13 +522,24 @@ async def my_specialist(request: Request):
     return await specialist_out(s)
 
 
+async def can_review(user: dict, s: dict) -> bool:
+    if s["user_id"] == user["user_id"]:
+        return False
+    if await db.reviews.find_one({"specialist_id": s["specialist_id"], "user_id": user["user_id"]}):
+        return False
+    conv = await db.conversations.find_one({"client_id": user["user_id"], "specialist_id": s["specialist_id"]})
+    return bool(conv and await db.messages.find_one({"conversation_id": conv["conversation_id"], "sender_id": user["user_id"]}))
+
+
 @api.get("/specialists/{sid}")
 async def get_specialist(sid: str, request: Request):
-    await current_user(request)
+    user = await current_user(request)
     s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0})
     if not s:
         raise HTTPException(404, "Not found")
-    return await specialist_out(s)
+    out = await specialist_out(s)
+    out["can_review"] = await can_review(user, s)
+    return out
 
 
 @api.post("/specialists/me/portfolio")
@@ -478,7 +548,11 @@ async def add_portfolio(body: PortfolioIn, request: Request):
     s = await db.specialists.find_one({"user_id": user["user_id"]})
     if not s:
         raise HTTPException(404, "Not a specialist")
-    item = {"item_id": new_id("pf"), "image": body.image, "caption": body.caption, "created_at": iso(now())}
+    if not body.caption.strip():
+        raise HTTPException(400, "Describe what was done")
+    caps = await caption_both(body.caption)
+    item = {"item_id": new_id("pf"), "image": body.image, "caption": body.caption.strip(),
+            "caption_es": caps["es"], "caption_it": caps["it"], "created_at": iso(now())}
     await db.specialists.update_one({"user_id": user["user_id"]}, {"$push": {"portfolio": {"$each": [item], "$position": 0}}})
     return item
 
@@ -519,14 +593,20 @@ async def add_review(sid: str, body: ReviewIn, request: Request):
         raise HTTPException(404, "Not found")
     if s["user_id"] == user["user_id"]:
         raise HTTPException(400, "You cannot review yourself")
+    if await db.reviews.find_one({"specialist_id": sid, "user_id": user["user_id"]}):
+        raise HTTPException(400, "You already rated this specialist")
+    if not await can_review(user, s):
+        raise HTTPException(403, "Write to the specialist before rating")
     review = {"review_id": new_id("rev"), "specialist_id": sid, "user_id": user["user_id"], "user_name": user["name"],
-              "user_picture": user.get("picture"), "rating": body.rating, "comment": body.comment.strip(),
-              "recommend": body.recommend, "created_at": iso(now())}
-    await db.reviews.update_one({"specialist_id": sid, "user_id": user["user_id"]}, {"$set": review}, upsert=True)
-    all_r = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1, "recommend": 1}).to_list(10000)
+              "rating": body.rating, "comment": body.comment.strip(), "created_at": iso(now())}
+    if review["comment"]:
+        both = await caption_both(review["comment"])
+        review["comment_es"], review["comment_it"] = both["es"], both["it"]
+    await db.reviews.insert_one(review)
+    review.pop("_id", None)
+    all_r = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
     avg = round(sum(r["rating"] for r in all_r) / len(all_r), 1)
-    await db.specialists.update_one({"specialist_id": sid}, {"$set": {
-        "rating_avg": avg, "reviews_count": len(all_r), "recommend_count": sum(1 for r in all_r if r.get("recommend"))}})
+    await db.specialists.update_one({"specialist_id": sid}, {"$set": {"rating_avg": avg, "reviews_count": len(all_r)}})
     return review
 
 
@@ -880,6 +960,12 @@ async def startup():
     await db.messages.create_index("conversation_id")
     await db.files.create_index("storage_path")
     await db.payment_transactions.create_index("session_id", unique=True)
+    # migrate single category -> categories (trades limited to the 5 supported ones)
+    async for s in db.specialists.find({"categories": {"$exists": False}}, {"_id": 0, "specialist_id": 1, "category": 1}):
+        cats = [s["category"]] if s.get("category") in CATEGORIES else []
+        await db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {"categories": cats}})
+    await db.specialists.update_many({}, {"$unset": {"city": "", "years_experience": "", "hourly_rate": "", "jobs_completed": "",
+                                                     "recommend_count": "", "category": ""}})
     try:
         init_storage()
     except Exception as e:

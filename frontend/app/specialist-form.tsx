@@ -13,7 +13,7 @@ import { CATEGORIES, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Avatar, Button, SectionTitle, VerifiedBadge } from "@/src/ui";
+import { Button, SectionTitle, VerifiedBadge } from "@/src/ui";
 
 async function pick(): Promise<ImagePicker.ImagePickerAsset | null> {
   const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6 });
@@ -30,7 +30,8 @@ export default function SpecialistForm() {
   const toast = useToast();
   const me = useQuery({ queryKey: ["specialist-me"], queryFn: () => api<any>("/specialists/me"), enabled: !!user?.specialist_id, retry: false });
 
-  const [f, setF] = useState({ name: user?.name || "", category: "plumbing", bio: "", phone: "", whatsapp: "", city: "", years_experience: "", hourly_rate: "", avatar: user?.picture || "" });
+  const [f, setF] = useState({ name: user?.name || "", bio: "", phone: "", whatsapp: "" });
+  const [cats, setCats] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
@@ -39,11 +40,10 @@ export default function SpecialistForm() {
 
   useEffect(() => {
     const s = me.data;
-    if (s)
-      setF({
-        name: s.name, category: s.category, bio: s.bio || "", phone: s.phone || "", whatsapp: s.whatsapp || "", city: s.city || "",
-        years_experience: String(s.years_experience ?? ""), hourly_rate: s.hourly_rate || "", avatar: s.avatar || "",
-      });
+    if (s) {
+      setF({ name: s.name, bio: s.bio || "", phone: s.phone || "", whatsapp: s.whatsapp || "" });
+      setCats(s.categories || []);
+    }
   }, [me.data]);
 
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -64,9 +64,10 @@ export default function SpecialistForm() {
 
   const save = async () => {
     if (!f.name.trim() || !f.phone.trim()) return toast(t("required"), "error");
+    if (!cats.length) return toast(t("choose_trades"), "error");
     setSaving(true);
     try {
-      await api("/specialists", { body: { ...f, years_experience: parseInt(f.years_experience || "0", 10) || 0 } });
+      await api("/specialists", { body: { ...f, categories: cats } });
       await refreshUser();
       await me.refetch();
       queryClient.invalidateQueries({ queryKey: ["specialists"] });
@@ -79,6 +80,7 @@ export default function SpecialistForm() {
   };
 
   const addWork = async () => {
+    if (!caption.trim()) return toast(t("caption_req"), "error");
     const path = await upload("work");
     if (!path) return;
     try {
@@ -121,37 +123,24 @@ export default function SpecialistForm() {
         <Text style={styles.title}>{t("form_title")}</Text>
       </View>
       <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: insets.bottom + 32 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.avatarRow}>
-          <Avatar uri={f.avatar} name={f.name} size={80} />
-          <Button
-            variant="secondary"
-            icon="camera-outline"
-            title={t("change_photo")}
-            loading={uploading === "avatar"}
-            onPress={async () => {
-              const p = await upload("avatar");
-              if (p) set("avatar")(p);
-            }}
-            testID="change-avatar-button"
-          />
-        </View>
         {field("name", t("name"))}
-        <Text style={styles.label}>{t("category")}</Text>
+        <Text style={styles.label}>{t("trades")} *</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ flexGrow: 0 }}>
-          {CATEGORIES.map((c) => (
-            <Pressable key={c} testID={`form-category-${c}`} onPress={() => set("category")(c)} style={[styles.chip, f.category === c && styles.chipOn]}>
-              <Text style={[styles.chipText, f.category === c && styles.chipTextOn]}>{t(`cat_${c}`)}</Text>
-            </Pressable>
-          ))}
+          {CATEGORIES.map((c) => {
+            const on = cats.includes(c);
+            return (
+              <Pressable key={c} testID={`form-category-${c}`} onPress={() => setCats((p) => (on ? p.filter((x) => x !== c) : [...p, c]))} style={[styles.chip, on && styles.chipOn]}>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{t(`cat_${c}`)}</Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
-        {field("bio", t("bio"), { multiline: true, style: [styles.input, { height: 100, textAlignVertical: "top" }] })}
+        {field("bio", t("bio_short"), { multiline: true, maxLength: 300, style: [styles.input, { height: 100, textAlignVertical: "top" }] })}
         {field("phone", t("phone") + " *", { keyboardType: "phone-pad" })}
         {field("whatsapp", t("whatsapp"), { keyboardType: "phone-pad" })}
-        {field("city", t("city"))}
-        <View style={{ flexDirection: "row", gap: 12 }}>
-          <View style={{ flex: 1 }}>{field("years_experience", t("years_exp"), { keyboardType: "number-pad" })}</View>
-          <View style={{ flex: 1 }}>{field("hourly_rate", t("rate"))}</View>
-        </View>
+        <Text style={styles.hint}>
+          {t("city")}: {t("turin")}
+        </Text>
         <Button title={t("save")} onPress={save} loading={saving} testID="specialist-save-button" />
 
         {!s ? (
@@ -166,7 +155,8 @@ export default function SpecialistForm() {
             )}
             <View style={{ marginTop: 24, gap: 12 }}>
               <SectionTitle>{t("portfolio")}</SectionTitle>
-              <TextInput testID="portfolio-caption-input" style={styles.input} placeholder={t("caption")} placeholderTextColor={colors.muted} value={caption} onChangeText={setCaption} />
+              {!s.portfolio?.length && <Text style={styles.hint}>{t("need_photos")}</Text>}
+              <TextInput testID="portfolio-caption-input" style={styles.input} maxLength={120} placeholder={t("caption_req")} placeholderTextColor={colors.muted} value={caption} onChangeText={setCaption} />
               <Button variant="secondary" icon="add" title={t("add_work")} loading={uploading === "work"} onPress={addWork} testID="add-portfolio-button" />
               <View style={styles.grid}>
                 {s.portfolio?.map((p: any) => (

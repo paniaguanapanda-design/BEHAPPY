@@ -1,0 +1,31 @@
+{
+  "summary": "Retested the iteration_3 fix: fall back from the own Gemini key to EMERGENT_LLM_KEY. On the first run the fix did NOT work: 3 of 6 tests failed. The own GEMINI_API_KEY still returns 429 RESOURCE_EXHAUSTED and the code falls back as intended. But the fallback call ALSO failed: _gemini_once always calls with_params(reasoning_effort='low'), and with EMERGENT_LLM_KEY the request goes through litellm's openai-compatible provider, which raises UnsupportedParamsError for reasoning_effort. So /api/diagnose returned 503, and review/caption translation silently stored the original text. I applied a one-line fix in server.py: send reasoning_effort only with the own key. After that, all 6 of 6 pass. /api/diagnose returns 200 with title_es/title_it/difficulty. GET ?lang=it returns an Italian description and title, cached in i18n. Portfolio caption_es is translated (IT->ES). Review comment_it is translated: 'Muy buen trabajo, rápido y limpio' became 'Ottimo lavoro, veloce e pulito'. The 503 status is confirmed: the JSON detail reaches the client through the proxy. fmtDate now uses day/month '2-digit' (code reviewed only). All test data was deleted.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "gemini_json fallback (/api/diagnose, GET /api/diagnoses/{id}?lang=, reviews, portfolio)", "issue": "FIXED BY TESTING AGENT. The fallback to EMERGENT_LLM_KEY failed with litellm.UnsupportedParamsError: 'openai does not support parameters: [reasoning_effort]' for model gemini/gemini-3-flash-preview. A standalone check confirmed it: Emergent key + reasoning_effort fails, Emergent key without it gives 'Ottimo lavoro'. Fix at server.py:60-64: apply with_params(reasoning_effort='low') only when api_key != EMERGENT_KEY.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "gemini_json", "issue": "Every AI call still tries the used-up own key first, so each request pays an extra failed round-trip of about 1s and adds a 429 warning to the log. Consider remembering the 429/RESOURCE_EXHAUSTED state (for example, skip the own key for N minutes or until the UTC day resets)."},
+      {"endpoint": "POST /api/specialists/{sid}/reviews, POST /api/specialists/me/portfolio", "issue": "If translation fails, the original text is stored in both _es and _it and never retried. This is how the regression went unnoticed: the endpoints returned 200 while translation was broken."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter4_gemini_fallback.py", "/app/backend/tests/cleanup_iter3.py", "/app/test_reports/pytest/pytest_iter4.xml"],
+  "action_items": [
+    "Review and keep the testing agent's fix in server.py _gemini_once: reasoning_effort is applied only for the own GEMINI_API_KEY. If you restructure it, do NOT send reasoning_effort with EMERGENT_LLM_KEY.",
+    "Optional: skip the own key temporarily after a 429 to avoid the extra latency on every call.",
+    "Optional: log or flag translation failures (for example, leave comment_it unset) so they are visible and can be retried."
+  ],
+  "critical_code_review_comments": [
+    "server.py:74-82 gemini_json falls back correctly on any exception, but the fallback used the same params as the own-key path, which the Emergent proxy rejects.",
+    "server.py:375 now returns 503. Confirmed that the JSON body {'detail':'AI analysis failed, please retry'} reaches the client through the public URL.",
+    "frontend/src/time.ts:3-4 fmtDate passes {day:'2-digit', month:'2-digit', year:'numeric'}. Correct (code review only, no UI run)."
+  ],
+  "updated_files": ["/app/backend/server.py (lines 60-64: reasoning_effort only for own key)", "/app/backend/tests/test_iter4_gemini_fallback.py (new)"],
+  "success_rate": {"backend": "100% (6/6) after the fix; 33% (2/6 passed, 1 skip-chain) before the fix", "frontend": "not tested (backend only)"},
+  "seed_data_creation": "Temporary only, all deleted: 4 test_i4*@fixai.app users, 2 specialists, 2 memberships, 2 conversations, 2 messages, 2 reviews, 1 diagnosis, 3 file records. Also deleted 1 orphan db.files record (user_2d5ecb1082c8, created 19:13:59, before this run). The DB now holds only the owner: users 1, specialists 1, memberships 1, diagnoses 9, user_sessions 5, files 9.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run from /app/backend: EXPO_PUBLIC_BACKEND_URL=<url> python -m pytest tests/test_iter4_gemini_fallback.py -n 0 -s (pytest.ini adds -n, so pass -n 0). Then run python tests/cleanup_iter3.py. The own GEMINI_API_KEY was still over its free quota (429) on 2026-10-23, so every AI call goes through the EMERGENT_LLM_KEY fallback.",
+  "rca_of_issue": "Reproduce: POST /api/diagnose returns 503. The backend log shows 'own Gemini key failed ... 429' and then 'UnsupportedParamsError: openai does not support parameters: [reasoning_effort]'. Cause: emergentintegrations routes the Emergent key through litellm's openai provider (model gemini/gemini-3-flash-preview), which does not accept reasoning_effort. Mitigation: apply reasoning_effort only for the direct Gemini key. Verified with a standalone script and the full pytest run."
+}

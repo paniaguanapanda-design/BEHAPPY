@@ -14,6 +14,7 @@ import { queryClient } from "@/src/query-client";
 import { rcEnabled, rcSimulated, useSubscription } from "@/src/revenuecat";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Button } from "@/src/ui";
+import { fmtDate } from "@/src/time";
 
 import { Plan, useMembership } from "@/src/membership";
 
@@ -23,7 +24,7 @@ export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const toast = useToast();
   const params = useLocalSearchParams<{ session_id?: string }>();
   const mq = useMembership();
@@ -171,7 +172,7 @@ export default function MembershipScreen() {
                 </Text>
                 {m?.active && m.expires_at ? (
                   <Text style={styles.statusSub}>
-                    {t(m.plan === "yearly" ? "yearly" : "monthly")} · {t("active_until")} {new Date(m.expires_at).toLocaleDateString()}
+                    {t(m.plan === "yearly" ? "yearly" : "monthly")} · {t("active_until")} {fmtDate(m.expires_at, lang)}
                   </Text>
                 ) : null}
               </View>
@@ -241,7 +242,7 @@ export default function MembershipScreen() {
                 <Button
                   variant="secondary"
                   icon="phone-portrait-outline"
-                  title={`${t("pay_inapp")} · ${pkgFor(plan)?.product.priceString ?? ""}`}
+                  title={t("pay_inapp")}
                   onPress={buyInApp}
                   loading={sub.isPurchasing}
                   disabled={!isSpecialist || !sub.identityReady}
@@ -262,7 +263,7 @@ export default function MembershipScreen() {
           <View style={styles.dialog} testID="confirm-purchase-modal">
             <Text style={styles.dialogTitle}>{t("confirm_purchase")}</Text>
             <Text style={styles.methodSub}>{t("confirm_purchase_text")}</Text>
-            <Text style={styles.planPrice}>{confirmPkg?.product.priceString}</Text>
+            <Text style={styles.planPrice}>{price(plan)}</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Button style={{ flex: 1 }} variant="ghost" title={t("cancel")} onPress={() => setConfirmPkg(null)} testID="confirm-purchase-cancel" />
               <Button style={{ flex: 1 }} title={t("confirm")} onPress={() => confirmPkg && doPurchase(confirmPkg)} testID="confirm-purchase-ok" />

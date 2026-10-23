@@ -10,7 +10,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, imageUri } from "@/src/api";
 import { useAuth } from "@/src/auth";
-import { useI18n } from "@/src/i18n";
+import { captionFor, tradesLabel, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -22,19 +22,15 @@ export default function SpecialistProfile() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const toast = useToast();
-  const { id, diagnosis, problem } = useLocalSearchParams<{ id: string; diagnosis?: string; problem?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const sq = useQuery({ queryKey: ["specialist", id], queryFn: () => api<any>(`/specialists/${id}`) });
   const rq = useQuery({ queryKey: ["reviews", id], queryFn: () => api<any[]>(`/specialists/${id}/reviews`) });
-  const [sheet, setSheet] = useState<null | "request" | "review">(null);
+  const [sheet, setSheet] = useState<null | "review">(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [desc, setDesc] = useState(problem || "");
-  const [address, setAddress] = useState("");
-  const [date, setDate] = useState("");
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
-  const [recommend, setRecommend] = useState(true);
   const [busy, setBusy] = useState(false);
 
   if (sq.isLoading) return <Loading />;
@@ -48,8 +44,7 @@ export default function SpecialistProfile() {
     );
 
   const isMe = s.user_id === user?.user_id;
-  const heroImg = s.portfolio?.[0]?.image || s.avatar;
-  const satisfaction = s.reviews_count ? Math.round((s.rating_avg / 5) * 100) : 0;
+  const heroImg = s.portfolio?.[0]?.image; // cover is always a work photo, never a personal photo
 
   const openChat = async () => {
     try {
@@ -60,28 +55,11 @@ export default function SpecialistProfile() {
     }
   };
 
-  const sendRequest = async () => {
-    if (!desc.trim()) return toast(t("required"), "error");
-    setBusy(true);
-    try {
-      const r = await api<any>("/requests", {
-        body: { specialist_id: s.specialist_id, description: desc, address, preferred_date: date, diagnosis_id: diagnosis || null },
-      });
-      setSheet(null);
-      toast(t("request_sent"));
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      router.push({ pathname: "/chat/[id]", params: { id: r.conversation_id } });
-    } catch (e: any) {
-      toast(e.message, "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const sendReview = async () => {
+    if (!rating) return toast(t("required"), "error");
     setBusy(true);
     try {
-      await api(`/specialists/${s.specialist_id}/reviews`, { body: { rating, comment, recommend } });
+      await api(`/specialists/${s.specialist_id}/reviews`, { body: { rating, comment } });
       setSheet(null);
       setComment("");
       toast(t("review_sent"));
@@ -105,44 +83,31 @@ export default function SpecialistProfile() {
             <Ionicons name="chevron-back" size={24} color={colors.onSurfaceInverse} />
           </Pressable>
           <View style={styles.heroContent}>
-            <View style={styles.avatarRing}>
-              <Avatar uri={s.avatar} name={s.name} size={76} />
-            </View>
             <View style={{ flex: 1, gap: 6 }}>
               <Text style={styles.name} testID="specialist-name">
                 {s.name}
               </Text>
-              <Text style={styles.heroSub}>
-                {t(`cat_${s.category}`)}
-                {s.city ? ` · ${s.city}` : ""}
+              <Text style={styles.heroSub} testID="specialist-trades">
+                {tradesLabel(s.categories, t)} · {t("turin")}
               </Text>
               {s.verified && <VerifiedBadge label={t("verified")} />}
             </View>
           </View>
         </View>
 
-        <View style={styles.stats}>
-          <View style={styles.stat}>
-            <Text style={styles.statVal} testID="specialist-rating">
-              {s.rating_avg?.toFixed(1)}
-            </Text>
-            <Stars value={s.rating_avg} size={11} />
+        {s.rating_avg != null && (
+          <View style={styles.stats}>
+            <View style={styles.stat}>
+              <Text style={styles.statVal} testID="specialist-rating">
+                {s.rating_avg.toFixed(1).replace(".", ",")}
+              </Text>
+              <Stars value={s.rating_avg} size={14} />
+              <Text style={styles.statLabel}>
+                {s.reviews_count} {t("ratings")}
+              </Text>
+            </View>
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statVal}>{satisfaction}%</Text>
-            <Text style={styles.statLabel}>{t("satisfaction")}</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statVal} testID="specialist-recommend-count">
-              {s.recommend_count}
-            </Text>
-            <Text style={styles.statLabel}>{t("recommend")}</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statVal}>{s.jobs_completed}</Text>
-            <Text style={styles.statLabel}>{t("jobs")}</Text>
-          </View>
-        </View>
+        )}
 
         <View style={styles.content}>
           {isMe && !s.membership_active && (
@@ -151,24 +116,17 @@ export default function SpecialistProfile() {
               <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="activate-membership-button" />
             </View>
           )}
-          <View style={{ gap: 8 }}>
-            <SectionTitle>{t("about")}</SectionTitle>
-            <Text style={styles.body}>{s.bio || "-"}</Text>
-            <View style={styles.infoRow}>
-              <View style={styles.info}>
-                <Ionicons name="ribbon-outline" size={16} color={colors.brandPrimary} />
-                <Text style={styles.infoText}>
-                  {s.years_experience} {t("years")}
-                </Text>
-              </View>
-              {s.hourly_rate ? (
-                <View style={styles.info}>
-                  <Ionicons name="pricetag-outline" size={16} color={colors.brandPrimary} />
-                  <Text style={styles.infoText}>{s.hourly_rate}</Text>
-                </View>
-              ) : null}
+          {isMe && s.membership_active && !s.portfolio?.length && (
+            <View style={styles.hiddenBanner} testID="need-photos-banner">
+              <Text style={styles.body}>{t("need_photos")}</Text>
             </View>
-          </View>
+          )}
+          {s.bio ? (
+            <View style={{ gap: 8 }}>
+              <SectionTitle>{t("about")}</SectionTitle>
+              <Text style={styles.body}>{s.bio}</Text>
+            </View>
+          ) : null}
 
           <View style={{ gap: 12 }}>
             <SectionTitle>{t("portfolio")}</SectionTitle>
@@ -177,11 +135,9 @@ export default function SpecialistProfile() {
                 {s.portfolio.map((p: any) => (
                   <Pressable key={p.item_id} testID={`portfolio-item-${p.item_id}`} onPress={() => setPreview(p.image)} style={styles.gridItem}>
                     <Image source={{ uri: imageUri(p.image) }} style={styles.gridImg} contentFit="cover" />
-                    {p.caption ? (
-                      <Text style={styles.caption} numberOfLines={1}>
-                        {p.caption}
-                      </Text>
-                    ) : null}
+                    <Text style={styles.caption} numberOfLines={1}>
+                      {captionFor(p, lang)}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
@@ -191,26 +147,19 @@ export default function SpecialistProfile() {
           </View>
 
           <View style={{ gap: 12 }}>
-            <View style={styles.rowBetween}>
-              <SectionTitle>{t("reviews_title")}</SectionTitle>
-            </View>
-            {!isMe && <Button variant="secondary" icon="star-outline" title={t("write_review")} onPress={() => setSheet("review")} testID="write-review-button" />}
+            <SectionTitle>{t("reviews_title")}</SectionTitle>
+            {s.can_review && <Button variant="secondary" icon="star-outline" title={t("rate_specialist")} onPress={() => setSheet("review")} testID="write-review-button" />}
             {rq.data?.length === 0 && <Text style={styles.muted}>{t("no_reviews")}</Text>}
             {rq.data?.map((r) => (
               <View key={r.review_id} style={styles.review} testID={`review-${r.review_id}`}>
                 <View style={styles.reviewHead}>
-                  <Avatar uri={r.user_picture} name={r.user_name} size={36} />
+                  <Avatar name={r.user_name} size={36} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.reviewName}>{r.user_name}</Text>
                     <Stars value={r.rating} size={12} />
                   </View>
-                  {r.recommend && (
-                    <View style={styles.recPill}>
-                      <Ionicons name="thumbs-up" size={12} color={colors.onBrandSecondary} />
-                    </View>
-                  )}
                 </View>
-                {r.comment ? <Text style={styles.body}>{r.comment}</Text> : null}
+                {r.comment ? <Text style={styles.body}>{(lang === "it" ? r.comment_it : r.comment_es) || r.comment}</Text> : null}
               </View>
             ))}
           </View>
@@ -232,10 +181,10 @@ export default function SpecialistProfile() {
             <Pressable testID="whatsapp-specialist-button" style={styles.iconBtn} onPress={() => Linking.openURL(`https://wa.me/${String(s.whatsapp || s.phone).replace(/[^0-9]/g, "")}`)}>
               <Ionicons name="logo-whatsapp" size={20} color={colors.brandPrimary} />
             </Pressable>
-            <Pressable testID="chat-specialist-button" style={styles.iconBtn} onPress={openChat}>
+            <Pressable testID="chat-specialist-button" style={[styles.iconBtn, { flex: 1, flexDirection: "row", gap: 8 }]} onPress={openChat}>
               <Ionicons name="chatbubble-ellipses" size={20} color={colors.brandPrimary} />
+              <Text style={styles.chatText}>{t("chat")}</Text>
             </Pressable>
-            <Button style={{ flex: 1 }} title={t("request")} icon="calendar" onPress={() => setSheet("request")} testID="request-service-button" />
           </>
         )}
       </BlurView>
@@ -245,18 +194,10 @@ export default function SpecialistProfile() {
           <Pressable style={styles.backdrop} onPress={() => setSheet(null)} />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.handle} />
-            {sheet === "request" ? (
+            {(
               <>
-                <Text style={styles.sheetTitle}>{t("request_title")}</Text>
-                <TextInput testID="request-description-input" style={[styles.input, { height: 100 }]} multiline placeholder={t("description")} placeholderTextColor={colors.muted} value={desc} onChangeText={setDesc} textAlignVertical="top" />
-                <TextInput testID="request-address-input" style={styles.input} placeholder={t("address")} placeholderTextColor={colors.muted} value={address} onChangeText={setAddress} />
-                <TextInput testID="request-date-input" style={styles.input} placeholder={t("preferred_date")} placeholderTextColor={colors.muted} value={date} onChangeText={setDate} />
-                <Button title={t("submit")} onPress={sendRequest} loading={busy} testID="request-submit-button" />
-              </>
-            ) : (
-              <>
-                <Text style={styles.sheetTitle}>{t("write_review")}</Text>
-                <Text style={styles.label}>{t("rating")}</Text>
+                <Text style={styles.sheetTitle}>{t("rate_title")}</Text>
+                <Text style={styles.label}>{t("rating_once")}</Text>
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   {[1, 2, 3, 4, 5].map((i) => (
                     <Pressable key={i} testID={`review-star-${i}`} onPress={() => setRating(i)} hitSlop={6}>
@@ -264,12 +205,8 @@ export default function SpecialistProfile() {
                     </Pressable>
                   ))}
                 </View>
-                <TextInput testID="review-comment-input" style={[styles.input, { height: 90 }]} multiline placeholder={t("comment")} placeholderTextColor={colors.muted} value={comment} onChangeText={setComment} textAlignVertical="top" />
-                <Pressable testID="review-recommend-toggle" onPress={() => setRecommend(!recommend)} style={styles.recRow}>
-                  <Ionicons name={recommend ? "checkbox" : "square-outline"} size={24} color={colors.brandPrimary} />
-                  <Text style={styles.body}>{t("recommend_q")}</Text>
-                </Pressable>
-                <Button title={t("submit")} onPress={sendReview} loading={busy} testID="review-submit-button" />
+                <TextInput testID="review-comment-input" style={[styles.input, { height: 80 }]} multiline maxLength={200} placeholder={t("comment_ph")} placeholderTextColor={colors.muted} value={comment} onChangeText={setComment} textAlignVertical="top" />
+                <Button title={t("submit")} onPress={sendReview} loading={busy} disabled={!rating} testID="review-submit-button" />
               </>
             )}
           </View>
@@ -315,6 +252,7 @@ const useStyles = makeStyles((c) => ({
   recPill: { backgroundColor: c.brandSecondary, padding: 6, borderRadius: 999 },
   cta: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border, overflow: "hidden" },
   iconBtn: { width: 50, height: 50, borderRadius: 12, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
+  chatText: { color: c.brandPrimary, fontWeight: "700", fontSize: 16 },
   backdrop: { flex: 1, backgroundColor: c.scrim },
   sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 12 },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: c.borderStrong, marginBottom: 4 },

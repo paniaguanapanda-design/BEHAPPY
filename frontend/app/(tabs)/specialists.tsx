@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -7,10 +7,10 @@ import { Image } from "expo-image";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, imageUri } from "@/src/api";
-import { CATEGORIES, useI18n } from "@/src/i18n";
+import { CATEGORIES, tradesLabel, useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Avatar, Button, Stars, VerifiedBadge } from "@/src/ui";
+import { Button, Stars, VerifiedBadge } from "@/src/ui";
 
 export default function Specialists() {
   const styles = useStyles();
@@ -18,14 +18,20 @@ export default function Specialists() {
   const insets = useSafeAreaInsets();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const router = useRouter();
-  const { t } = useI18n();
-  const params = useLocalSearchParams<{ category?: string; diagnosis?: string; problem?: string }>();
-  const [cat, setCat] = useState<string>(params.category || "all");
+  const { t, lang } = useI18n();
+  const params = useLocalSearchParams<{ category?: string }>();
+  const [cat, setCat] = useState<string>(params.category || "");
   const [search, setSearch] = useState("");
   const [qText, setQText] = useState("");
+  const chipScroll = useRef<ScrollView>(null);
+  const chipX = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    if (params.category) setCat(params.category);
+    if (params.category) {
+      setCat(params.category);
+      const x = chipX.current[params.category];
+      if (x != null) chipScroll.current?.scrollTo({ x: Math.max(0, x - 16), animated: true });
+    }
   }, [params.category]);
 
   useEffect(() => {
@@ -35,10 +41,8 @@ export default function Specialists() {
 
   const q = useQuery({
     queryKey: ["specialists", cat, qText],
-    queryFn: () => api<any[]>(`/specialists?category=${cat}${qText ? `&q=${encodeURIComponent(qText)}` : ""}`),
+    queryFn: () => api<any[]>(`/specialists?category=${cat || "all"}${qText ? `&q=${encodeURIComponent(qText)}` : ""}`),
   });
-
-  const chips = ["all", ...CATEGORIES];
 
   return (
     <View style={styles.root}>
@@ -57,22 +61,23 @@ export default function Specialists() {
         </View>
       </View>
       <View style={styles.chipRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipContent}>
-          {chips.map((c) => (
-            <Pressable key={c} testID={`category-chip-${c}`} onPress={() => setCat(c)} style={[styles.chip, cat === c && styles.chipOn]}>
-              <Text style={[styles.chipText, cat === c && styles.chipTextOn]}>{c === "all" ? t("all") : t(`cat_${c}`)}</Text>
+        <ScrollView ref={chipScroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipContent}>
+          {CATEGORIES.map((c) => (
+            <Pressable
+              key={c}
+              testID={`category-chip-${c}`}
+              onLayout={(e) => {
+                chipX.current[c] = e.nativeEvent.layout.x;
+                if (c === cat) chipScroll.current?.scrollTo({ x: Math.max(0, e.nativeEvent.layout.x - 16), animated: false });
+              }}
+              onPress={() => setCat(cat === c ? "" : c)}
+              style={[styles.chip, cat === c && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, cat === c && styles.chipTextOn]}>{t(`cat_${c}`)}</Text>
             </Pressable>
           ))}
         </ScrollView>
       </View>
-      {params.diagnosis && params.problem ? (
-        <View style={styles.problemBanner} testID="problem-banner">
-          <Ionicons name="sparkles" size={16} color={colors.onBrandSecondary} />
-          <Text style={styles.problemText} numberOfLines={1}>
-            {t("for_problem")}: {params.problem}
-          </Text>
-        </View>
-      ) : null}
       <FlatList
         data={q.data || []}
         keyExtractor={(i) => i.specialist_id}
@@ -101,47 +106,28 @@ export default function Specialists() {
           <Animated.View entering={FadeInDown.delay(index * 50).duration(350)}>
             <Pressable
               testID={`specialist-card-${item.specialist_id}`}
-              onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: item.specialist_id, diagnosis: params.diagnosis ?? "", problem: params.problem ?? "" } })}
+              onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: item.specialist_id } })}
               style={({ pressed }) => [styles.card, pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 }]}
             >
-              <View style={styles.cardTop}>
-                <Avatar uri={item.avatar} name={item.name} size={56} />
-                <View style={{ flex: 1, gap: 4 }}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    {item.verified && <VerifiedBadge small />}
-                  </View>
-                  <Text style={styles.sub} numberOfLines={1}>
-                    {t(`cat_${item.category}`)}
-                    {item.city ? ` · ${item.city}` : ""}
+              <Image source={{ uri: imageUri(item.portfolio[0]?.image) }} style={styles.cover} contentFit="cover" />
+              <View style={styles.cardBody}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {item.name}
                   </Text>
-                  <View style={styles.ratingRow}>
+                  {item.verified && <VerifiedBadge small />}
+                </View>
+                <Text style={styles.sub} numberOfLines={1}>
+                  {tradesLabel(item.categories, t)} · {t("turin")}
+                </Text>
+                {item.rating_avg != null && (
+                  <View style={styles.ratingRow} testID={`specialist-rating-${item.specialist_id}`}>
                     <Stars value={item.rating_avg} size={13} />
                     <Text style={styles.ratingText}>
-                      {item.rating_avg?.toFixed(1)} ({item.reviews_count})
+                      {item.rating_avg.toFixed(1).replace(".", lang === "it" || lang === "es" ? "," : ".")} ({item.reviews_count})
                     </Text>
                   </View>
-                </View>
-              </View>
-              {item.portfolio?.length > 0 && (
-                <View style={styles.thumbs}>
-                  {item.portfolio.slice(0, 3).map((p: any) => (
-                    <Image key={p.item_id} source={{ uri: imageUri(p.image) }} style={styles.thumb} contentFit="cover" />
-                  ))}
-                </View>
-              )}
-              <View style={styles.stats}>
-                <Text style={styles.stat}>
-                  <Text style={styles.statBold}>{item.recommend_count}</Text> {t("recommend")}
-                </Text>
-                <Text style={styles.stat}>
-                  <Text style={styles.statBold}>{item.jobs_completed}</Text> {t("jobs")}
-                </Text>
-                <Text style={styles.stat}>
-                  <Text style={styles.statBold}>{item.years_experience}</Text> {t("years")}
-                </Text>
+                )}
               </View>
             </Pressable>
           </Animated.View>
@@ -168,7 +154,9 @@ const useStyles = makeStyles((c) => ({
   skeleton: { height: 180, borderRadius: 20, backgroundColor: c.surfaceTertiary },
   empty: { alignItems: "center", padding: 32, gap: 12 },
   emptyText: { color: c.muted, textAlign: "center", fontSize: 15 },
-  card: { padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, gap: 12 },
+  card: { borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  cover: { width: "100%", height: 170, backgroundColor: c.surfaceTertiary },
+  cardBody: { padding: 16, gap: 4 },
   cardTop: { flexDirection: "row", gap: 12, alignItems: "center" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   name: { fontSize: 17, fontWeight: "700", color: c.onSurface, flexShrink: 1 },

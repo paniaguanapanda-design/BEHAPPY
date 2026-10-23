@@ -10,6 +10,7 @@ import { makeStyles, useTheme } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 import { LangToggle } from "@/src/LangToggle";
 import { useMembership } from "@/src/membership";
+import { fmtDate } from "@/src/time";
 
 type RowProps = { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; sub?: string; onPress: () => void; testID: string; danger?: boolean };
 
@@ -36,7 +37,7 @@ export default function Profile() {
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const isSpec = user?.role === "specialist" && user.specialist_id;
   const membership = useMembership(!!isSpec);
 
@@ -80,7 +81,7 @@ export default function Profile() {
                 testID="membership-row"
                 icon="ribbon-outline"
                 title={t("membership")}
-                sub={membership.data ? (membership.data.active ? `${t("active_until")} ${new Date(membership.data.expires_at!).toLocaleDateString()}` : t("mb_inactive")) : undefined}
+                sub={membership.data ? (membership.data.active ? `${t("active_until")} ${fmtDate(membership.data.expires_at!, lang)}` : t("mb_inactive")) : undefined}
                 onPress={() => router.push("/membership")}
               />
             </>
@@ -88,7 +89,6 @@ export default function Profile() {
             <Row testID="become-specialist-row" icon="briefcase-outline" title={t("become_specialist")} sub={t("become_specialist_sub")} onPress={() => router.push("/specialist-form")} />
           )}
           <View style={styles.sep} />
-          <Row testID="my-requests-row" icon="clipboard-outline" title={t("my_requests")} onPress={() => router.push("/requests")} />
         </View>
 
         <View style={styles.group}>

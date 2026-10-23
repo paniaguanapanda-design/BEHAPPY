@@ -1,0 +1,45 @@
+{
+  "summary": "Tested the BE HAPPY showcase rules end to end. Backend: 17/17 pytest pass. Covered: real-image AI diagnosis (result was medium/plumbing with title_es+title_it), translation via GET ?lang=it, the 5 categories, multi-trade specialist creation (no city/years/rate fields), listing rules (membership + at least 1 photo), category filter, name-only search, portfolio captions in ES/IT, and review rules (403 before a message, 400 self/duplicate, rating_avg null under 3 ratings, shown as 4,0 once there are 3). Frontend (375x667): Experts tab has exactly 5 toggle chips with no 'Todos', 'Buscar por nombre'/'Cerca per nome', and cards showing cover photo + name + trades · Turín/Torino, with no 0,0. Diagnosis easy/medium/expert behave as specified and see-specialists opens Experts with hvac/electrical active and no banner. Profile has no avatar, shows the caption in the viewer language, has call/whatsapp/chat only, and no Solicitar. The review modal works (5 stars + optional phrase). ES/IT toggle switches all screens including diagnosis content. Membership benefits text is new and 'presupuestos' is gone. There is no Solicitudes row and no quote buttons in chat. Bugs found: 'Valorar' does not appear after chatting until the page is reloaded; the in-app purchase button shows '$79.99' instead of 199,99 €; dates use device locale (MM/DD/YYYY). All test data was deleted.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/specialists/{id}", "issue": "Still returns profiles of non-members and of specialists without photos when called by id. Only the list hides them. Acceptable if the UI shows the hidden/unavailable banner."},
+      {"endpoint": "gemini/litellm client", "issue": "Repeated 'asyncio - ERROR - Unclosed client session / Unclosed connector' in backend.err.log. An aiohttp session is not being closed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Specialist profile 'Valorar' button", "issue": "Steps: client opens profile, taps Chat, sends a message, goes back. write-review-button is not shown until a full reload. Cause: chat/[id].tsx send only calls msgs.refetch() and never invalidates the ['specialist', id] query, and the profile does not refetch on focus.", "testID": "write-review-button", "priority": "MEDIUM"},
+      {"component": "Membership in-app purchase button", "issue": "Shows 'Suscribirme en la app · $79.99' for yearly, which contradicts the 199,99 €/año card. The price comes from the RevenueCat product priceString (Test Store product misconfigured), so the user sees two different prices.", "testID": "pay-inapp-button", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dates (membership 'Activa hasta', home recent diagnoses, chat times)", "issues": ["new Date().toLocaleDateString() ignores the app language and shows 10/23/2027 (US format). Use the app lang locale ('es-ES'/'it-IT'), which gives 23/10/2027."]},
+      {"screen": "Experts (opened from diagnosis)", "issues": ["When category=hvac/appliances is preselected, the active chip is off-screen at the right of the horizontal chip scroll. Scroll the active chip into view."]},
+      {"screen": "Specialist profile portfolio", "issues": ["Captions use numberOfLines={2} and wrap to 2 lines, but the requirement is a one-line caption."]},
+      {"screen": "Specialist profile reviews", "issues": ["Review phrases show in the writer's language (e.g. 'Muy amable' in the IT view). The rule says every screen is in the viewer language, so consider translating like the captions, or accept it as user content."]},
+      {"screen": "Scan home hero", "issues": ["The hero (unsplash photo-1585704032915) is a chrome bath faucet. No drip or breakdown is clearly visible, so please verify it reads as a 'dripping faucet' breakdown."]},
+      {"screen": "Global CameraPermissionPrompt", "issues": ["On web it reappears on every page load and on AppState 'active' when permission is not granted, covering the Experts/Diagnosis screens. Consider showing it once per session."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_showcase_rules.py", "/app/backend/tests/cleanup_test_data.py", "/app/test_reports/pytest/pytest_showcase.xml"],
+  "action_items": [
+    "After sending a chat message, invalidate queryKey ['specialist', specialist_id] (or use useFocusEffect to refetch the profile) so 'Valorar' appears without a reload.",
+    "Align the RevenueCat Test Store product prices with 19,99 €/month and 199,99 €/year (the yearly button currently shows $79.99), or don't show priceString when it differs.",
+    "Format dates with the app language locale (toLocaleDateString(lang === 'it' ? 'it-IT' : 'es-ES')).",
+    "Optional: scroll the preselected category chip into view, make captions numberOfLines={1}, close the aiohttp session in the gemini helper."
+  ],
+  "critical_code_review_comments": [
+    "server.py specialist_out sets rating_avg None when reviews_count<3. Good, and confirmed in both list and profile.",
+    "get_specialist does not hide non-member/no-photo profiles when accessed by direct id (by design for the 'hidden' banner?).",
+    "specialist/[id].tsx keeps an unused avatarRing style (dead code).",
+    "list_messages still joins the quotes collection even though quotes were removed (dead code)."
+  ],
+  "updated_files": ["/app/backend/tests/test_showcase_rules.py (new)", "/app/backend/tests/cleanup_test_data.py (new)"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "~90% (all requested flows pass; 2 medium UX bugs)"},
+  "seed_data_creation": "Temporary test_*@fixai.app users, a specialist with membership, portfolio, reviews and diagnoses (easy/medium/expert inserted in Mongo). All were removed by tests/cleanup_test_data.py. The DB now holds only paniaguanapan.d.a@gmail.com and test_v7@fixai.app (not deleted, it was given as an existing account; it has 1 old diagnosis).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with '-n 0' (pytest.ini enables xdist and the module-level CTX breaks across workers): EXPO_PUBLIC_BACKEND_URL=<url> pytest tests/test_showcase_rules.py -n 0. Then run python tests/cleanup_test_data.py (it excludes test_v7 and the owner). In Playwright call page.context.grant_permissions(['camera']) first, otherwise the global CameraPermissionPrompt modal blocks clicks. /tmp/leak.jpg is used as the real image."
+}

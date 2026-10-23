@@ -1,0 +1,39 @@
+{
+  "summary": "Retested the iteration_2 fixes. 5 of 6 work: Bug1 ('Valorar' shows after chat with no reload), Bug2 (in-app button has no $ price; modal shows 199,99 € / 19,99 € for the selected plan), es-ES/it-IT dates, the hvac/appliances chip scrolls into view, and 1-line captions. Review translation code is correct, but it failed live: the GEMINI_API_KEY free tier (20 requests/day for gemini-3-flash) ran out during the run, so comment_it was saved as the untranslated Spanish text. The same quota error makes POST /api/diagnose fail, which breaks the core diagnosis feature until the quota resets in about 12h. The UI shows comment_it in Italian (checked with a seeded Italian translation). All test data was deleted; only the owner account remains.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/diagnose (and caption_both used by POST /api/specialists/{sid}/reviews, POST /api/specialists/me/portfolio)", "issue": "gemini_json uses os.environ GEMINI_API_KEY before EMERGENT_LLM_KEY. That key is on the Gemini FREE TIER (20 requests/day/model) and is used up: 429 RESOURCE_EXHAUSTED, 'retry in 12h32m'. /api/diagnose returns 502 'AI analysis failed'. Review/caption translation silently falls back to the original text, so comment_it equals comment_es. I checked that EMERGENT_LLM_KEY with gemini-3-flash-preview works right now: it translated 'Muy buen trabajo' to 'Ottimo lavoro'.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/diagnose", "issue": "When the AI fails it returns HTTP 502. The Cloudflare proxy replaces the 502 body with its own HTML 'Bad gateway' page, so the client never sees the JSON detail. Use 503 (or 500) instead of 502."},
+      {"endpoint": "POST /api/specialists/{sid}/reviews", "issue": "If translation fails, comment_it/comment_es are saved as the original text and never retried. Consider a background retry, or don't store the fields so they can be translated later."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dates (es)", "issues": ["es-ES toLocaleDateString gives '5/3/2026' with no zero padding, while Italian gives '05/03/2026'. If strict dd/mm/yyyy is required, pass {day:'2-digit', month:'2-digit', year:'numeric'} in src/time.ts fmtDate."]},
+      {"screen": "Specialist profile after returning from chat", "issues": ["2.5s after chat-back the hero and portfolio images were briefly blank (placeholder). This may be a flicker from the transition or the refetch; low priority."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter3_fixes.py", "/app/backend/tests/cleanup_iter3.py", "/app/test_reports/pytest/pytest_iter3.xml"],
+  "action_items": [
+    "CRITICAL: Gemini quota. Remove or replace GEMINI_API_KEY (free tier, used up), or catch 429/RateLimit in gemini_json and retry with EMERGENT_LLM_KEY. Until then, diagnosis and review/caption translation do not work.",
+    "Return 503 instead of 502 from /api/diagnose so the JSON error reaches the client through Cloudflare.",
+    "Optional: zero-pad es dates in fmtDate; add a testID to the confirm-modal price text (membership.tsx:266)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:61 'os.environ.get(\"GEMINI_API_KEY\") or EMERGENT_KEY' never falls back on quota errors.",
+    "chat/[id].tsx:49 invalidateQueries(['specialist']) is a prefix match, so it covers ['specialist', id]. Correct.",
+    "specialist/[id].tsx:162 picks comment_it/comment_es by language, falling back to comment. Correct."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter3_fixes.py (new)", "/app/backend/tests/cleanup_iter3.py (new)"],
+  "success_rate": {"backend": "86% (6/7; the 1 failure is review translation, caused by the Gemini quota)", "frontend": "100% of the fixes retested (6/6 UI checks)"},
+  "seed_data_creation": "Temporary only, and all deleted: 7 test_*@fixai.app users, 2 specialists per run, seeded diagnoses dated 2026-03-05/04 and backdated conversation/message timestamps (used to check date formats), and one review whose comment_it was set by hand to check the Italian UI. Also deleted 11 orphan db.files records left by test users from earlier iterations. The DB now holds only the owner's data: users 1, specialists 1, memberships 1, diagnoses 9, sessions 5, files 9.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=<url> pytest tests/test_iter3_fixes.py -n 0, then python tests/cleanup_iter3.py (deletes every non-owner user and their data). Check that the Gemini quota is fixed before testing diagnosis or translation. In Playwright, call grant_permissions(['camera']) first.",
+  "rca_of_issue": "Review comment not translated. Reproduce: POST a review with a comment; the backend log shows 'caption translate failed: ... 429 RESOURCE_EXHAUSTED generate_content_free_tier_requests limit 20 gemini-3-flash'. Cause: GEMINI_API_KEY is a free-tier key with 20 requests/day, and iteration testing used it up. Fix: fall back to EMERGENT_LLM_KEY (checked working) or upgrade the key's billing."
+}

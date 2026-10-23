@@ -45,3 +45,12 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 - Removed all seed/demo data and seed code; DB keeps only real user paniaguanapan.d.a@gmail.com
 - Diagnosis speed: client compresses to max 1024px JPEG 0.6 (expo-image-manipulator); server re-shrinks (Pillow), Gemini reasoning_effort=low (~25s -> ~4-5s), image storage moved to background task
 - Pending: testing_agent verification of compression flow (user paused to save to GitHub)
+
+## Iteration 7 (2026-06)
+- Diagnosis 3 outcomes: easy (steps only, no experts button), medium (steps + "Ver especialistas"), expert (no steps/materials/tools + button). Difficulty normalized backend-side.
+- 5 trades only (plumbing, electrical, carpentry, hvac, appliances); specialists can have several (categories[]); filter chips = trades (toggle), active chip auto-scrolled
+- Full i18n per viewer: diagnosis translated on demand (?lang=, cached in i18n.<lang>), titles in both langs, portfolio captions + review comments translated at creation, Turín/Torino, dates in es-ES/it-IT
+- Experts = showcase: only members with >=1 work photo, cover = work photo, no avatar/years/rate/jobs/satisfaction, search by name only, no distance
+- Ratings 1-5 once per client, only after the client wrote in chat; average shown from 3 ratings
+- Service requests & quotes UI removed (deal/payment outside app); membership benefits text updated
+- Gemini: own key first, falls back to Emergent universal key on failure (e.g. free-tier quota 429); errors 503

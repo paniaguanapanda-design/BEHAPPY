@@ -20,7 +20,7 @@ export default function Messages() {
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const router = useRouter();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const q = useQuery({ queryKey: ["conversations"], queryFn: () => api<any[]>("/conversations"), refetchInterval: 5000 });
 
   return (
@@ -58,7 +58,7 @@ export default function Messages() {
                   <Text style={styles.name} numberOfLines={1}>
                     {name}
                   </Text>
-                  <Text style={styles.time}>{timeLabel(item.updated_at)}</Text>
+                  <Text style={styles.time}>{timeLabel(item.updated_at, lang)}</Text>
                 </View>
                 <View style={styles.topLine}>
                   <Text style={[styles.last, unread > 0 && styles.lastUnread]} numberOfLines={1}>

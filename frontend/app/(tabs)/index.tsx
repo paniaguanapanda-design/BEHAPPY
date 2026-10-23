@@ -15,8 +15,9 @@ import { makeStyles, useTheme } from "@/src/theme";
 import { useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 import { DifficultyBadge } from "@/src/DifficultyBadge";
+import { fmtDate } from "@/src/time";
 
-const HERO = "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1000&q=80";
+const HERO = "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=1000&q=80";
 
 export default function Home() {
   const styles = useStyles();
@@ -25,7 +26,7 @@ export default function Home() {
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const router = useRouter();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { analyzing, pickFromGallery } = useDiagnose();
   const q = useQuery({ queryKey: ["diagnoses"], queryFn: () => api<any[]>("/diagnoses") });
 
@@ -94,10 +95,10 @@ export default function Home() {
               )}
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.rowTitle} numberOfLines={1}>
-                  {d.title}
+                  {d[`title_${lang}`] || d.title}
                 </Text>
                 <Text style={styles.rowSub} numberOfLines={1}>
-                  {t(`cat_${d.category}`)} · {new Date(d.created_at).toLocaleDateString()}
+                  {t(`cat_${d.category}`)} · {fmtDate(d.created_at, lang)}
                 </Text>
               </View>
               <DifficultyBadge level={d.difficulty} />

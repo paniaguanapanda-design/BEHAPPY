@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -17,13 +17,10 @@ export default function Diagnosis() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const q = useQuery({ queryKey: ["diagnosis", id], queryFn: () => api<any>(`/diagnoses/${id}`) });
+  const q = useQuery({ queryKey: ["diagnosis", id, lang], queryFn: () => api<any>(`/diagnoses/${id}?lang=${lang}`) });
   const [done, setDone] = useState<Record<number, boolean>>({});
-  const [diy, setDiy] = useState(false);
-  const [stepsY, setStepsY] = useState(0);
-  const scroll = useRef<ScrollView>(null);
 
   if (q.isLoading) return <Loading />;
   const d = q.data;
@@ -35,18 +32,15 @@ export default function Diagnosis() {
       </View>
     );
 
-  const steps: { title: string; detail: string }[] = d.steps || [];
+  const steps: { title: string; detail: string }[] = d.difficulty === "expert" ? [] : d.steps || [];
+  const materials: any[] = d.difficulty === "expert" ? [] : d.materials || [];
+  const tools: string[] = d.difficulty === "expert" ? [] : d.tools || [];
   const doneCount = Object.values(done).filter(Boolean).length;
-
-  const goDiy = () => {
-    setDiy(true);
-    scroll.current?.scrollTo({ y: stepsY - 16, animated: true });
-  };
-  const goPro = () => router.push({ pathname: "/specialists", params: { category: d.category, diagnosis: d.diagnosis_id, problem: d.title } });
+  const goPro = () => router.push({ pathname: "/specialists", params: { category: d.category } });
 
   return (
     <View style={styles.root}>
-      <ScrollView ref={scroll} contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
         <View style={styles.hero}>
           {d.image_path ? <Image source={{ uri: imageUri(d.image_path) }} style={styles.abs} contentFit="cover" /> : <View style={[styles.abs, { backgroundColor: colors.brandPrimary }]} />}
           <LinearGradient colors={["transparent", colors.surfaceInverse]} style={styles.abs} />
@@ -78,18 +72,35 @@ export default function Diagnosis() {
             </View>
           ) : (
             <>
-              <View style={styles.metaRow}>
-                <View style={styles.meta}>
-                  <Ionicons name="time-outline" size={18} color={colors.brandPrimary} />
-                  <Text style={styles.metaLabel}>{t("time")}</Text>
-                  <Text style={styles.metaValue}>{d.estimated_time || "-"}</Text>
+              {d.estimated_time && d.difficulty !== "expert" ? (
+                <View style={styles.metaRow}>
+                  <View style={styles.meta}>
+                    <Ionicons name="time-outline" size={18} color={colors.brandPrimary} />
+                    <Text style={styles.metaLabel}>{t("time")}</Text>
+                    <Text style={styles.metaValue}>{d.estimated_time}</Text>
+                  </View>
                 </View>
-                <View style={styles.meta}>
-                  <Ionicons name="wallet-outline" size={18} color={colors.brandPrimary} />
-                  <Text style={styles.metaLabel}>{t("cost")}</Text>
-                  <Text style={styles.metaValue}>{d.estimated_cost || "-"}</Text>
+              ) : null}
+
+              {d.difficulty === "expert" && (
+                <View style={styles.outcome} testID="outcome-expert">
+                  <Ionicons name="shield-half" size={22} color={colors.error} />
+                  <Text style={styles.outcomeText}>{t("expert_hint")}</Text>
+                  <Button title={t("see_specialists")} icon="people" onPress={goPro} testID="see-specialists-button" />
                 </View>
-              </View>
+              )}
+              {d.difficulty === "medium" && (
+                <View style={styles.outcome} testID="outcome-medium">
+                  <Ionicons name="construct" size={22} color={colors.warning} />
+                  <Text style={styles.outcomeText}>{t("medium_hint")}</Text>
+                </View>
+              )}
+              {d.difficulty === "easy" && (
+                <View style={styles.outcome} testID="outcome-easy">
+                  <Ionicons name="hammer" size={22} color={colors.success} />
+                  <Text style={styles.outcomeText}>{t("easy_hint")}</Text>
+                </View>
+              )}
 
               {d.safety_warnings?.length > 0 && (
                 <View style={styles.safety} testID="safety-warnings">
@@ -105,38 +116,26 @@ export default function Diagnosis() {
                 </View>
               )}
 
-              <SectionTitle>{t("how_solve")}</SectionTitle>
-              <View style={styles.choiceRow}>
-                <Pressable testID="choose-diy-button" onPress={goDiy} style={({ pressed }) => [styles.choice, d.diy_recommended && styles.choiceOn, pressed && { opacity: 0.85 }]}>
-                  {d.diy_recommended && <Text style={styles.recTag}>{t("recommended")}</Text>}
-                  <Ionicons name="hammer" size={26} color={colors.success} />
-                  <Text style={styles.choiceTitle}>{t("diy")}</Text>
-                  <Text style={styles.choiceSub}>{t("diy_sub")}</Text>
-                </Pressable>
-                <Pressable testID="choose-specialist-button" onPress={goPro} style={({ pressed }) => [styles.choice, !d.diy_recommended && styles.choiceOn, pressed && { opacity: 0.85 }]}>
-                  {!d.diy_recommended && <Text style={styles.recTag}>{t("recommended")}</Text>}
-                  <Ionicons name="person" size={26} color={colors.error} />
-                  <Text style={styles.choiceTitle}>{t("hire")}</Text>
-                  <Text style={styles.choiceSub}>{t("hire_sub")}</Text>
-                </Pressable>
-              </View>
-
-              <SectionTitle>{t("materials")}</SectionTitle>
-              <View style={styles.card} testID="materials-list">
-                {(d.materials || []).map((m: any, i: number) => (
-                  <View key={i} style={[styles.matRow, i > 0 && styles.divider]}>
-                    <Ionicons name="cube-outline" size={18} color={colors.brandTertiary} />
-                    <Text style={styles.matName}>{m.name}</Text>
-                    <Text style={styles.matQty}>{m.quantity}</Text>
+              {materials.length > 0 && (
+                <>
+                  <SectionTitle>{t("materials")}</SectionTitle>
+                  <View style={styles.card} testID="materials-list">
+                    {materials.map((m: any, i: number) => (
+                      <View key={i} style={[styles.matRow, i > 0 && styles.divider]}>
+                        <Ionicons name="cube-outline" size={18} color={colors.brandTertiary} />
+                        <Text style={styles.matName}>{m.name}</Text>
+                        <Text style={styles.matQty}>{m.quantity}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
+                </>
+              )}
 
-              {d.tools?.length > 0 && (
+              {tools.length > 0 && (
                 <>
                   <SectionTitle>{t("tools")}</SectionTitle>
                   <View style={styles.toolWrap}>
-                    {d.tools.map((tool: string, i: number) => (
+                    {tools.map((tool: string, i: number) => (
                       <View key={i} style={styles.tool}>
                         <Ionicons name="build-outline" size={14} color={colors.onBrandSecondary} />
                         <Text style={styles.toolText}>{tool}</Text>
@@ -146,19 +145,14 @@ export default function Diagnosis() {
                 </>
               )}
 
-              <View onLayout={(e) => setStepsY(e.nativeEvent.layout.y)} style={{ gap: 12 }}>
+              {steps.length > 0 && (
+              <View style={{ gap: 12 }}>
                 <View style={styles.stepsHead}>
                   <SectionTitle>{t("steps")}</SectionTitle>
                   <Text style={styles.progress} testID="steps-progress">
                     {doneCount}/{steps.length}
                   </Text>
                 </View>
-                {diy && (
-                  <View style={styles.diyBanner}>
-                    <Ionicons name="checkbox-outline" size={18} color={colors.onBrandSecondary} />
-                    <Text style={styles.diyText}>{t("diy_mode_on")}</Text>
-                  </View>
-                )}
                 {steps.map((s, i) => (
                   <Pressable key={i} testID={`step-item-${i}`} onPress={() => setDone((p) => ({ ...p, [i]: !p[i] }))} style={[styles.step, done[i] && styles.stepDone]}>
                     <View style={[styles.stepNum, done[i] && { backgroundColor: colors.success }]}>
@@ -171,12 +165,13 @@ export default function Diagnosis() {
                   </Pressable>
                 ))}
               </View>
+              )}
 
-              {d.when_to_call_pro ? (
-                <View style={styles.proBox}>
+              {d.difficulty === "medium" ? (
+                <View style={styles.proBox} testID="medium-pro-box">
                   <Text style={styles.proTitle}>{t("when_pro")}</Text>
-                  <Text style={styles.proText}>{d.when_to_call_pro}</Text>
-                  <Button title={t("hire")} icon="people" onPress={goPro} testID="bottom-hire-button" />
+                  {d.when_to_call_pro ? <Text style={styles.proText}>{d.when_to_call_pro}</Text> : null}
+                  <Button title={t("see_specialists")} icon="people" onPress={goPro} testID="see-specialists-button" />
                 </View>
               ) : null}
             </>
@@ -198,6 +193,8 @@ const useStyles = makeStyles((c) => ({
   catText: { color: c.onBrandSecondary, fontWeight: "700", fontSize: 13 },
   title: { color: c.onSurfaceInverse, fontSize: 28, fontWeight: "800", letterSpacing: -0.6 },
   content: { padding: 16, gap: 24 },
+  outcome: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, gap: 10 },
+  outcomeText: { fontSize: 15, color: c.onSurface, lineHeight: 22 },
   body: { fontSize: 16, lineHeight: 24, color: c.onSurfaceTertiary },
   warnBox: { padding: 16, borderRadius: 12, backgroundColor: c.surfaceTertiary, gap: 12 },
   warnText: { color: c.onSurface, fontSize: 15 },
