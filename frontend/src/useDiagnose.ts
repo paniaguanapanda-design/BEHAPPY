@@ -6,6 +6,7 @@ import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { compressToBase64 } from "@/src/compressImage";
+import { localPhotos } from "@/src/localPhotos";
 
 export function useDiagnose() {
   const [analyzing, setAnalyzing] = useState(false);
@@ -18,6 +19,9 @@ export function useDiagnose() {
     try {
       const base64 = await compressToBase64(uri, width, height);
       const d = await api<{ diagnosis_id: string }>("/diagnose", { body: { image_base64: base64, language: lang } });
+      localPhotos[d.diagnosis_id] = uri;
+      // show the result straight away in the scanner's language — no extra fetch/translation
+      queryClient.setQueryData(["diagnosis", d.diagnosis_id, lang], { ...d, title: (d as any)[`title_${lang}`] });
       queryClient.invalidateQueries({ queryKey: ["diagnoses"] });
       const target = { pathname: "/diagnosis/[id]" as const, params: { id: d.diagnosis_id } };
       if (replace) router.replace(target);

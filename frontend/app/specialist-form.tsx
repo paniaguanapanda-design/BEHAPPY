@@ -9,7 +9,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, imageUri, uploadImage } from "@/src/api";
 import { useAuth } from "@/src/auth";
-import { CATEGORIES, useI18n } from "@/src/i18n";
+import { CATEGORIES, SUBTRADES, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -32,6 +32,7 @@ export default function SpecialistForm() {
 
   const [f, setF] = useState({ name: user?.name || "", bio: "", phone: "", whatsapp: "" });
   const [cats, setCats] = useState<string[]>([]);
+  const [subs, setSubs] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
@@ -43,6 +44,7 @@ export default function SpecialistForm() {
     if (s) {
       setF({ name: s.name, bio: s.bio || "", phone: s.phone || "", whatsapp: s.whatsapp || "" });
       setCats(s.categories || []);
+      setSubs(s.subtrades || []);
     }
   }, [me.data]);
 
@@ -67,7 +69,7 @@ export default function SpecialistForm() {
     if (!cats.length) return toast(t("choose_trades"), "error");
     setSaving(true);
     try {
-      await api("/specialists", { body: { ...f, categories: cats } });
+      await api("/specialists", { body: { ...f, categories: cats, subtrades: subs } });
       await refreshUser();
       await me.refetch();
       queryClient.invalidateQueries({ queryKey: ["specialists"] });
@@ -103,7 +105,7 @@ export default function SpecialistForm() {
     try {
       await api("/specialists/me/verify", { body: { document_image: docImg, document_number: docNum } });
       me.refetch();
-      toast(t("verified_ok"));
+      toast(t("in_review"));
     } catch (e: any) {
       toast(e.message, "error");
     }
@@ -135,6 +137,21 @@ export default function SpecialistForm() {
             );
           })}
         </ScrollView>
+        {cats.filter((c) => SUBTRADES[c]).map((g) => (
+          <View key={g} style={{ gap: 8 }}>
+            <Text style={styles.label}>{t(`cat_${g}`)}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {SUBTRADES[g].map((st) => {
+                const on = subs.includes(st);
+                return (
+                  <Pressable key={st} testID={`form-subtrade-${st}`} onPress={() => setSubs((p) => (on ? p.filter((x) => x !== st) : [...p, st]))} style={[styles.chip, on && styles.chipOn]}>
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{t(`sub_${st}`)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
         {field("bio", t("bio_short"), { multiline: true, maxLength: 300, style: [styles.input, { height: 100, textAlignVertical: "top" }] })}
         {field("phone", t("phone") + " *", { keyboardType: "phone-pad" })}
         {field("whatsapp", t("whatsapp"), { keyboardType: "phone-pad" })}
@@ -172,7 +189,12 @@ export default function SpecialistForm() {
 
             <View style={styles.verifyBox}>
               <SectionTitle>{t("verification")}</SectionTitle>
-              {s.verified ? (
+              {s.verification_status === "in_review" && !s.verified ? (
+                <View testID="verification-status-in-review" style={{ gap: 6 }}>
+                  <Text style={styles.label}>{t("in_review")}</Text>
+                  <Text style={styles.hint}>{t("in_review_text")}</Text>
+                </View>
+              ) : s.verified ? (
                 <View testID="verification-status-verified">
                   <VerifiedBadge label={t("verified_ok")} />
                 </View>

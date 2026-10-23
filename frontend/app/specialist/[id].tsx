@@ -90,6 +90,11 @@ export default function SpecialistProfile() {
               <Text style={styles.heroSub} testID="specialist-trades">
                 {tradesLabel(s.categories, t)} · {t("turin")}
               </Text>
+              {s.subtrades?.length ? (
+                <Text style={styles.heroSub} testID="specialist-subtrades">
+                  {s.subtrades.map((x: string) => t(`sub_${x}`)).join(", ")}
+                </Text>
+              ) : null}
               {s.verified && <VerifiedBadge label={t("verified")} />}
             </View>
           </View>

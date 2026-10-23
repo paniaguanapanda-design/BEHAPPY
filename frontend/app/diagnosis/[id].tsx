@@ -10,6 +10,7 @@ import { api, imageUri } from "@/src/api";
 import { useI18n } from "@/src/i18n";
 import { makeStyles, useTheme } from "@/src/theme";
 import { DifficultyBadge } from "@/src/DifficultyBadge";
+import { localPhotos } from "@/src/localPhotos";
 import { Button, Loading, SectionTitle } from "@/src/ui";
 
 export default function Diagnosis() {
@@ -33,6 +34,8 @@ export default function Diagnosis() {
     );
 
   const steps: { title: string; detail: string }[] = d.difficulty === "expert" ? [] : d.steps || [];
+  const isAppliance = d.category === "appliance";
+  const photo = localPhotos[d.diagnosis_id] ?? imageUri(d.image_path);
   const materials: any[] = d.difficulty === "expert" ? [] : d.materials || [];
   const tools: string[] = d.difficulty === "expert" ? [] : d.tools || [];
   const doneCount = Object.values(done).filter(Boolean).length;
@@ -42,7 +45,11 @@ export default function Diagnosis() {
     <View style={styles.root}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
         <View style={styles.hero}>
-          {d.image_path ? <Image source={{ uri: imageUri(d.image_path) }} style={styles.abs} contentFit="cover" /> : <View style={[styles.abs, { backgroundColor: colors.brandPrimary }]} />}
+          {photo ? (
+            <Image source={{ uri: photo }} style={styles.abs} contentFit="cover" testID="diagnosis-photo" />
+          ) : (
+            <View style={[styles.abs, { backgroundColor: colors.surfaceInverse }]} />
+          )}
           <LinearGradient colors={["transparent", colors.surfaceInverse]} style={styles.abs} />
           <Pressable testID="diagnosis-back-button" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={[styles.back, { top: insets.top + 8 }]}>
             <Ionicons name="chevron-back" size={24} color={colors.onSurfaceInverse} />
@@ -52,7 +59,7 @@ export default function Diagnosis() {
               <View style={styles.catTag}>
                 <Text style={styles.catText}>{t(`cat_${d.category}`)}</Text>
               </View>
-              <DifficultyBadge level={d.difficulty} large />
+              {!isAppliance && <DifficultyBadge level={d.difficulty} large />}
             </View>
             <Text style={styles.title} testID="diagnosis-title">
               {d.title}
@@ -69,6 +76,11 @@ export default function Diagnosis() {
             <View style={styles.warnBox}>
               <Text style={styles.warnText}>{t("not_home")}</Text>
               <Button title={t("scan_again")} icon="camera" onPress={() => router.replace("/scan")} testID="scan-again-button" />
+            </View>
+          ) : isAppliance ? (
+            <View style={styles.outcome} testID="outcome-appliance">
+              <Ionicons name="swap-horizontal" size={22} color={colors.brandTertiary} />
+              <Text style={styles.outcomeText}>{t("appliance_hint")}</Text>
             </View>
           ) : (
             <>

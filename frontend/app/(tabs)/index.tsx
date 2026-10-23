@@ -1,23 +1,19 @@
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, imageUri } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme } from "@/src/theme";
 import { useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
-import { DifficultyBadge } from "@/src/DifficultyBadge";
-import { fmtDate } from "@/src/time";
 
-const HERO = "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=1000&q=80";
+const HERO = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Ceiling_water_damage.jpg/1280px-Ceiling_water_damage.jpg";
 
 export default function Home() {
   const styles = useStyles();
@@ -26,9 +22,8 @@ export default function Home() {
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const router = useRouter();
   const { user } = useAuth();
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const { analyzing, pickFromGallery } = useDiagnose();
-  const q = useQuery({ queryKey: ["diagnoses"], queryFn: () => api<any[]>("/diagnoses") });
 
   return (
     <View style={styles.root}>
@@ -40,7 +35,6 @@ export default function Home() {
       </View>
       <ScrollView
         contentContainerStyle={{ paddingBottom: bottomChrome + 24 }}
-        refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
       >
         <Animated.View entering={FadeInDown.duration(400)}>
           <Pressable testID="scan-problem-button" onPress={() => router.push("/scan")} style={({ pressed }) => [styles.hero, pressed && { transform: [{ scale: 0.98 }] }]}>
@@ -72,39 +66,6 @@ export default function Home() {
           </Pressable>
         </Animated.View>
 
-        <Text style={styles.section}>{t("recent")}</Text>
-        {q.data && q.data.length === 0 && (
-          <View style={styles.empty} testID="no-diagnoses">
-            <Ionicons name="sparkles-outline" size={28} color={colors.brandTertiary} />
-            <Text style={styles.emptyText}>{t("no_recent")}</Text>
-          </View>
-        )}
-        {q.data?.map((d, i) => (
-          <Animated.View key={d.diagnosis_id} entering={FadeInDown.delay(150 + i * 50).duration(350)}>
-            <Pressable
-              testID={`diagnosis-item-${d.diagnosis_id}`}
-              onPress={() => router.push({ pathname: "/diagnosis/[id]", params: { id: d.diagnosis_id } })}
-              style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}
-            >
-              {d.image_path ? (
-                <Image source={{ uri: imageUri(d.image_path) }} style={styles.thumb} contentFit="cover" />
-              ) : (
-                <View style={[styles.thumb, styles.thumbEmpty]}>
-                  <Ionicons name="construct-outline" size={22} color={colors.brandPrimary} />
-                </View>
-              )}
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={styles.rowTitle} numberOfLines={1}>
-                  {d[`title_${lang}`] || d.title}
-                </Text>
-                <Text style={styles.rowSub} numberOfLines={1}>
-                  {t(`cat_${d.category}`)} · {fmtDate(d.created_at, lang)}
-                </Text>
-              </View>
-              <DifficultyBadge level={d.difficulty} />
-            </Pressable>
-          </Animated.View>
-        ))}
       </ScrollView>
       <AnalyzingOverlay visible={analyzing} />
     </View>

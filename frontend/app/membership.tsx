@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import type { PurchasesPackage } from "react-native-purchases";
@@ -26,13 +25,9 @@ export default function MembershipScreen() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const toast = useToast();
-  const params = useLocalSearchParams<{ session_id?: string }>();
   const mq = useMembership();
   const sub = useSubscription();
   const [plan, setPlan] = useState<Plan>("yearly");
-  const [busy, setBusy] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [pendingSession, setPendingSession] = useState<string | null>(null);
   const [confirmPkg, setConfirmPkg] = useState<PurchasesPackage | null>(null);
   const synced = useRef<string | null>(null);
 
@@ -45,39 +40,6 @@ export default function MembershipScreen() {
     queryClient.invalidateQueries({ queryKey: ["specialists"] });
     queryClient.invalidateQueries({ queryKey: ["specialist"] });
   }, []);
-
-  const pollStatus = useCallback(
-    async (sid: string) => {
-      setChecking(true);
-      try {
-        for (let i = 0; i < 8; i++) {
-          const r = await api<{ payment_status: string; status: string }>(`/membership/checkout/status/${sid}`);
-          if (r.payment_status === "paid") {
-            toast(t("mb_paid"));
-            setPendingSession(null);
-            refreshAll();
-            return;
-          }
-          if (r.status === "expired") break;
-          await new Promise((res) => setTimeout(res, 2000));
-        }
-        toast(t("mb_pending_pay"), "info");
-      } catch (e: any) {
-        toast(e.message, "error");
-      } finally {
-        setChecking(false);
-      }
-    },
-    [refreshAll, t, toast],
-  );
-
-  // Web: returning from Stripe Checkout
-  useEffect(() => {
-    if (params.session_id) {
-      pollStatus(params.session_id);
-      if (Platform.OS === "web") window.history.replaceState(window.history.state, "", window.location.pathname);
-    }
-  }, [params.session_id, pollStatus]);
 
   const pkgs = sub.offerings?.current?.availablePackages ?? [];
   const pkgFor = (p: Plan) => pkgs.find((k) => k.identifier === (p === "monthly" ? "$rc_monthly" : "$rc_annual"));
@@ -96,25 +58,6 @@ export default function MembershipScreen() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub.entitlement, isSpecialist]);
-
-  const payStripe = async () => {
-    setBusy(true);
-    try {
-      const origin = Platform.OS === "web" ? window.location.origin : (process.env.EXPO_PUBLIC_BACKEND_URL as string);
-      const r = await api<{ url: string; session_id: string }>("/membership/checkout", { body: { plan, origin_url: origin } });
-      if (Platform.OS === "web") {
-        window.location.href = r.url;
-        return;
-      }
-      setPendingSession(r.session_id);
-      await WebBrowser.openBrowserAsync(r.url);
-      await pollStatus(r.session_id);
-    } catch (e: any) {
-      toast(e.message, "error");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const doPurchase = async (pkg: PurchasesPackage) => {
     setConfirmPkg(null);
@@ -208,23 +151,6 @@ export default function MembershipScreen() {
               </Pressable>
             ))}
           </View>
-
-          {checking && (
-            <View style={styles.checking} testID="membership-checking">
-              <ActivityIndicator color={colors.brandPrimary} />
-              <Text style={styles.statusSub}>{t("mb_checking")}</Text>
-            </View>
-          )}
-
-          {(Platform.OS === "web" || __DEV__) && (
-          <View style={styles.method}>
-            <Button title={t("pay_card")} icon="card" onPress={payStripe} loading={busy} disabled={!isSpecialist || checking} testID="pay-stripe-button" />
-            <Text style={styles.methodSub}>{t("pay_card_sub")}</Text>
-            {pendingSession && !checking ? (
-              <Button variant="ghost" title={t("check_payment")} onPress={() => pollStatus(pendingSession)} testID="check-payment-button" />
-            ) : null}
-          </View>
-          )}
 
           {rcEnabled && (
             <View style={styles.method}>

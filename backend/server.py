@@ -26,7 +26,6 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, TextDelta, StreamDone  # noqa: E402
-from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest  # noqa: E402
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -53,7 +52,9 @@ async def health():
 
 api = APIRouter(prefix="/api")
 
-CATEGORIES = ["plumbing", "electrical", "carpentry", "hvac", "appliances"]
+CATEGORIES = ["plumbing", "electrical", "hvac", "masonry", "carpentry"]
+SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "tejados"],
+             "carpentry": ["puertas", "ventanas", "parquet", "cerrajeria", "cristales"]}
 LANG_NAME = {"es": "Spanish", "it": "Italian"}
 
 
@@ -295,6 +296,7 @@ DIAG_PROMPT = """You are an expert home repair technician. Analyze the photo of 
 Respond ONLY with valid JSON (no markdown). All text fields in {lang}, except title_es (Spanish) and title_it (Italian). Schema:
 {{
  "is_home_problem": true/false,
+ "is_appliance": true/false,
  "title_es": "short problem name in Spanish",
  "title_it": "short problem name in Italian",
  "category": one of {cats},
@@ -311,6 +313,7 @@ Difficulty rules:
 - easy: a non-expert can safely fix it alone. Give 4-8 clear steps.
 - medium: a handy person can try it. Give 4-8 clear steps; when_to_call_pro explains when to stop and call a specialist.
 - expert: needs a professional (gas, mains electricity, structural, refrigerant, anything risky). steps, materials and tools MUST be empty arrays. Never give repair instructions; safety_warnings only says what to avoid and how to stay safe until the specialist arrives.
+If the problem is a household appliance (washing machine, oven, fridge, dishwasher, dryer, microwave or any other appliance) set is_appliance true and leave steps, materials and tools empty.
 If the image is not a home problem set is_home_problem false and still fill title/description explaining that.
 {extra}"""
 
@@ -318,8 +321,11 @@ TRANSLATABLE = ["description", "safety_warnings", "materials", "tools", "steps",
 
 
 def normalize_diagnosis(r: dict) -> dict:
-    if r.get("category") not in CATEGORIES:
-        r["category"] = "plumbing" if r.get("category") in ("general", None) else "carpentry"
+    if r.get("is_appliance"):
+        r["category"] = "appliance"
+        r["steps"], r["materials"], r["tools"] = [], [], []
+    elif r.get("category") not in CATEGORIES:
+        r["category"] = "masonry"
     diff = r.get("difficulty")
     r["difficulty"] = "expert" if diff in ("hard", "expert") else diff if diff in ("easy", "medium") else "medium"
     if r["difficulty"] == "expert":
@@ -343,6 +349,8 @@ MAX_SIDE = 1024
 def shrink_image(data: bytes) -> bytes:
     """Resize to max 1024px and recompress as JPEG so Gemini gets a light payload."""
     im = Image.open(io.BytesIO(data))
+    if im.format == "JPEG" and max(im.size) <= MAX_SIDE:
+        return data  # already compressed on the phone: don't re-encode
     im = ImageOps.exif_transpose(im).convert("RGB")
     im.thumbnail((MAX_SIDE, MAX_SIDE))
     out = io.BytesIO()
@@ -430,6 +438,7 @@ async def get_diagnosis(diagnosis_id: str, request: Request, lang: Optional[str]
 class SpecialistIn(BaseModel):
     name: str
     categories: List[str]
+    subtrades: List[str] = []
     bio: str = Field("", max_length=300)
     phone: str
     whatsapp: Optional[str] = None
@@ -484,6 +493,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
         raise HTTPException(400, "Name and phone required")
     data = body.model_dump()
     data["categories"] = cats
+    data["subtrades"] = [x for x in dict.fromkeys(body.subtrades) if any(x in SUBTRADES.get(c, []) for c in cats)]
     data["bio"] = data["bio"].strip()
     data["whatsapp"] = data.get("whatsapp") or data["phone"]
     existing = await db.specialists.find_one({"user_id": user["user_id"]}, {"_id": 0})
@@ -575,8 +585,9 @@ async def verify(body: VerifyIn, request: Request):
     # MVP: identity document + number submitted => verified automatically
     await db.specialists.update_one({"user_id": user["user_id"]}, {"$set": {
         "verification_document": body.document_image, "document_number": body.document_number.strip(),
-        "verification_status": "verified", "verified": True, "verified_at": iso(now())}})
-    return {"verified": True, "verification_status": "verified"}
+        "verification_status": "in_review", "verified": False, "submitted_at": iso(now())}})
+    # badge is only granted after a manual review (no auto-approval)
+    return {"verified": False, "verification_status": "in_review"}
 
 
 @api.get("/specialists/{sid}/reviews")
@@ -829,19 +840,9 @@ async def update_quote(qid: str, body: QuoteStatusIn, request: Request):
 PLANS = {"monthly": {"amount": 19.99, "days": 30}, "yearly": {"amount": 199.99, "days": 365}}
 
 
-class CheckoutIn(BaseModel):
-    plan: str
-    origin_url: str
-
-
 class RCSyncIn(BaseModel):
     plan: str
     expiration_date: Optional[str] = None
-
-
-def stripe_client(request: Request, origin: Optional[str] = None) -> StripeCheckout:
-    host = (origin or str(request.base_url)).rstrip("/")
-    return StripeCheckout(api_key=os.environ["STRIPE_API_KEY"], webhook_url=f"{host}/api/webhook/stripe")
 
 
 async def activate_membership(user_id: str, plan: str, source: str, expires_at: Optional[datetime] = None):
@@ -875,64 +876,6 @@ async def membership_me(request: Request):
     return await membership_payload(user["user_id"])
 
 
-@api.post("/membership/checkout")
-async def membership_checkout(body: CheckoutIn, request: Request):
-    user = await current_user(request)
-    if body.plan not in PLANS:
-        raise HTTPException(400, "Invalid plan")
-    if not await db.specialists.find_one({"user_id": user["user_id"]}):
-        raise HTTPException(400, "Create your specialist profile first")
-    origin = body.origin_url.rstrip("/")
-    amount = PLANS[body.plan]["amount"]
-    sc = stripe_client(request, origin)
-    session = await sc.create_checkout_session(CheckoutSessionRequest(
-        amount=amount + 0.004,  # library truncates int(amount*100); offset avoids 19.99 -> 1998 float error
-        success_url=f"{origin}/membership?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{origin}/membership",
-        metadata={"user_id": user["user_id"], "plan": body.plan, "type": "specialist_membership"}))
-    await db.payment_transactions.insert_one({
-        "session_id": session.session_id, "user_id": user["user_id"], "email": user["email"], "plan": body.plan,
-        "amount": amount, "currency": "eur", "payment_status": "initiated", "status": "open", "processed": False,
-        "created_at": iso(now())})
-    return {"url": session.url, "session_id": session.session_id}
-
-
-async def process_paid_session(session_id: str, payment_status: str, status: str):
-    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if not tx:
-        return None
-    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"payment_status": payment_status, "status": status}})
-    if payment_status == "paid":
-        res = await db.payment_transactions.update_one({"session_id": session_id, "processed": False}, {"$set": {"processed": True}})
-        if res.modified_count == 1:
-            await activate_membership(tx["user_id"], tx["plan"], "stripe")
-    return tx
-
-
-@api.get("/membership/checkout/status/{session_id}")
-async def membership_status(session_id: str, request: Request):
-    user = await current_user(request)
-    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if not tx or tx["user_id"] != user["user_id"]:
-        raise HTTPException(404, "Session not found")
-    st = await stripe_client(request).get_checkout_status(session_id)
-    await process_paid_session(session_id, st.payment_status, st.status)
-    return {"payment_status": st.payment_status, "status": st.status, "membership": await membership_payload(user["user_id"])}
-
-
-@api.post("/webhook/stripe")
-async def stripe_webhook(request: Request):
-    body = await request.body()
-    try:
-        ev = await stripe_client(request).handle_webhook(body, request.headers.get("Stripe-Signature"))
-    except Exception as e:
-        logger.warning("stripe webhook error: %s", e)
-        raise HTTPException(400, "Invalid webhook")
-    if ev.session_id:
-        await process_paid_session(ev.session_id, ev.payment_status, "complete" if ev.payment_status == "paid" else "open")
-    return {"received": True}
-
-
 @api.post("/membership/revenuecat-sync")
 async def revenuecat_sync(body: RCSyncIn, request: Request):
     """Mirror the in-app (RevenueCat) entitlement expiry so the specialist is listed for other users."""
@@ -964,6 +907,9 @@ async def startup():
     async for s in db.specialists.find({"categories": {"$exists": False}}, {"_id": 0, "specialist_id": 1, "category": 1}):
         cats = [s["category"]] if s.get("category") in CATEGORIES else []
         await db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {"categories": cats}})
+    await db.specialists.update_many({"categories": "appliances"}, {"$pull": {"categories": "appliances"}})
+    await db.specialists.update_many({"verification_status": "verified", "verified_by": {"$exists": False}},
+                                     {"$set": {"verification_status": "in_review", "verified": False}})
     await db.specialists.update_many({}, {"$unset": {"city": "", "years_experience": "", "hourly_rate": "", "jobs_completed": "",
                                                      "recommend_count": "", "category": ""}})
     try:

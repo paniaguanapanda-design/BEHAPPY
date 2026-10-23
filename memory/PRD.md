@@ -54,3 +54,11 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 - Ratings 1-5 once per client, only after the client wrote in chat; average shown from 3 ratings
 - Service requests & quotes UI removed (deal/payment outside app); membership benefits text updated
 - Gemini: own key first, falls back to Emergent universal key on failure (e.g. free-tier quota 429); errors 503
+
+## Iteration 8 (2026-06)
+- 5 groups: plumbing, electrical, hvac, masonry (Obra/Muratura: muratura, piastrellista, pintura, suelos, tejados), carpentry (puertas, ventanas, parquet, cerrajería, cristales). Appliances removed: appliance photos -> "en Turín normalmente se sustituye" (category "appliance", no specialists)
+- Stripe removed (UI + backend); membership only via RevenueCat (EUR 19.99 / 199.99)
+- ID document -> verification_status "in_review" (no auto badge, no admin screen)
+- Scan tab: real damage photo (Wikimedia "Ceiling water damage"), only scan + gallery buttons
+- Result: scanned phone photo shown instantly (localPhotos), result cached from POST (no extra fetch/translation), image stored in background, no double compression
+- Profile: Cuenta / Historial segmented tabs; history rows photo/title/trade/date

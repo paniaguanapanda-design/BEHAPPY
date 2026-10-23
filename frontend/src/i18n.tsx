@@ -50,9 +50,13 @@ const es = {
   accept: "Aceptar", reject: "Rechazar", complete: "Marcar completado", open_chat: "Abrir chat", rate_now: "Valorar",
   st_pending: "Pendiente", st_accepted: "Aceptada", st_rejected: "Rechazada", st_completed: "Completada", st_cancelled: "Cancelada",
   cat_plumbing: "Fontanería", cat_electrical: "Electricidad", cat_carpentry: "Carpintería", cat_painting: "Pintura",
-  cat_masonry: "Albañilería", cat_appliances: "Electrodomésticos", cat_hvac: "Climatización", cat_roofing: "Tejados", cat_general: "General",
+  cat_masonry: "Obra", cat_appliance: "Electrodoméstico", cat_hvac: "Climatización", cat_roofing: "Tejados", cat_general: "General",
   error_generic: "Algo salió mal", required: "Completa los campos obligatorios", edit_profile: "Editar perfil", back: "Atrás",
-  turin: "Turín", trades: "Oficios", see_specialists: "Ver especialistas",
+  turin: "Turín", trades: "Oficios",
+  sub_muratura: "Albañilería", sub_piastrellista: "Alicatado", sub_pintura: "Pintura", sub_suelos: "Suelos", sub_tejados: "Tejados",
+  sub_puertas: "Puertas", sub_ventanas: "Ventanas", sub_parquet: "Parquet", sub_cerrajeria: "Cerrajería", sub_cristales: "Cristales",
+  appliance_hint: "Es un electrodoméstico. En Turín normalmente se sustituye, no se repara.",
+  tab_account: "Cuenta", tab_history: "Historial", in_review: "En revisión", in_review_text: "Hemos recibido tu documento. La insignia de verificado se activa cuando se revise.", see_specialists: "Ver especialistas",
   easy_hint: "Puedes arreglarlo tú mismo siguiendo estos pasos.",
   medium_hint: "Puedes intentarlo siguiendo estos pasos. Si no lo consigues, un especialista puede ayudarte.",
   expert_hint: "Esta reparación necesita un especialista. Por tu seguridad no te damos instrucciones para hacerla.",
@@ -125,9 +129,13 @@ const it: typeof es = {
   accept: "Accetta", reject: "Rifiuta", complete: "Segna completato", open_chat: "Apri chat", rate_now: "Valuta",
   st_pending: "In attesa", st_accepted: "Accettata", st_rejected: "Rifiutata", st_completed: "Completata", st_cancelled: "Annullata",
   cat_plumbing: "Idraulica", cat_electrical: "Elettricità", cat_carpentry: "Falegnameria", cat_painting: "Pittura",
-  cat_masonry: "Muratura", cat_appliances: "Elettrodomestici", cat_hvac: "Climatizzazione", cat_roofing: "Tetti", cat_general: "Generale",
+  cat_masonry: "Muratura", cat_appliance: "Elettrodomestico", cat_hvac: "Climatizzazione", cat_roofing: "Tetti", cat_general: "Generale",
   error_generic: "Qualcosa è andato storto", required: "Compila i campi obbligatori", edit_profile: "Modifica profilo", back: "Indietro",
-  turin: "Torino", trades: "Mestieri", see_specialists: "Vedi specialisti",
+  turin: "Torino", trades: "Mestieri",
+  sub_muratura: "Muratura", sub_piastrellista: "Piastrellista", sub_pintura: "Pittura", sub_suelos: "Pavimenti", sub_tejados: "Tetti",
+  sub_puertas: "Porte", sub_ventanas: "Finestre", sub_parquet: "Parquet", sub_cerrajeria: "Serrature", sub_cristales: "Vetri",
+  appliance_hint: "È un elettrodomestico. A Torino di solito si sostituisce, non si ripara.",
+  tab_account: "Account", tab_history: "Cronologia", in_review: "In revisione", in_review_text: "Abbiamo ricevuto il tuo documento. Il badge verificato si attiva dopo la revisione.", see_specialists: "Vedi specialisti",
   easy_hint: "Puoi ripararlo da solo seguendo questi passaggi.",
   medium_hint: "Puoi provarci seguendo questi passaggi. Se non ci riesci, uno specialista può aiutarti.",
   expert_hint: "Questa riparazione richiede uno specialista. Per la tua sicurezza non diamo istruzioni per farla.",
@@ -155,7 +163,11 @@ const it: typeof es = {
 
 export type TKey = keyof typeof es;
 const dict = { es, it };
-export const CATEGORIES = ["plumbing", "electrical", "carpentry", "hvac", "appliances"] as const;
+export const CATEGORIES = ["plumbing", "electrical", "hvac", "masonry", "carpentry"] as const;
+export const SUBTRADES: Record<string, string[]> = {
+  masonry: ["muratura", "piastrellista", "pintura", "suelos", "tejados"],
+  carpentry: ["puertas", "ventanas", "parquet", "cerrajeria", "cristales"],
+};
 
 export const tradesLabel = (cats: string[] | undefined, t: (k: string) => string) => (cats || []).map((c) => t(`cat_${c}`)).join(", ");
 export const captionFor = (p: { caption?: string; caption_es?: string; caption_it?: string }, lang: Lang) =>

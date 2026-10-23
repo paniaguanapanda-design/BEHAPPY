@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -10,6 +10,7 @@ import { makeStyles, useTheme } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 import { LangToggle } from "@/src/LangToggle";
 import { useMembership } from "@/src/membership";
+import { HistoryList } from "@/src/HistoryList";
 import { fmtDate } from "@/src/time";
 
 type RowProps = { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; sub?: string; onPress: () => void; testID: string; danger?: boolean };
@@ -40,12 +41,23 @@ export default function Profile() {
   const { t, lang } = useI18n();
   const isSpec = user?.role === "specialist" && user.specialist_id;
   const membership = useMembership(!!isSpec);
+  const [tab, setTab] = useState<"account" | "history">("account");
 
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.title}>{t("profile_title")}</Text>
+        <View style={styles.seg}>
+          {(["account", "history"] as const).map((k) => (
+            <Pressable key={k} testID={`profile-tab-${k}`} onPress={() => setTab(k)} style={[styles.segItem, tab === k && styles.segOn]}>
+              <Text style={[styles.segText, tab === k && styles.segTextOn]}>{t(k === "account" ? "tab_account" : "tab_history")}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
+      {tab === "history" ? (
+        <HistoryList bottom={bottomChrome} />
+      ) : (
       <ScrollView contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: bottomChrome + 24 }}>
         <View style={styles.userCard}>
           <Avatar uri={user?.picture} name={user?.name} size={64} />
@@ -95,13 +107,19 @@ export default function Profile() {
           <Row testID="logout-button" icon="log-out-outline" title={t("logout")} onPress={logout} danger />
         </View>
       </ScrollView>
+      )}
     </View>
   );
 }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  header: { paddingHorizontal: 24, paddingBottom: 4 },
+  header: { paddingHorizontal: 24, paddingBottom: 8, gap: 12 },
+  seg: { flexDirection: "row", backgroundColor: c.surfaceTertiary, borderRadius: 12, padding: 3 },
+  segItem: { flex: 1, minHeight: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  segOn: { backgroundColor: c.surfaceSecondary },
+  segText: { fontSize: 14, fontWeight: "600", color: c.onSurfaceTertiary },
+  segTextOn: { color: c.brandPrimary },
   title: { fontSize: 28, fontWeight: "800", color: c.onSurface, letterSpacing: -0.6 },
   userCard: { flexDirection: "row", alignItems: "center", gap: 16, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
   name: { fontSize: 20, fontWeight: "800", color: c.onSurface },
