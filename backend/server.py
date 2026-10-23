@@ -888,7 +888,7 @@ async def revenuecat_sync(request: Request):
     async with httpx.AsyncClient(timeout=20) as hc:
         r = await hc.get(f"https://api.revenuecat.com/v1/subscribers/{user['user_id']}",
                          headers={"Authorization": f"Bearer {secret}"})
-    if r.status_code != 200:
+    if r.status_code not in (200, 201):
         logger.warning("RevenueCat check failed: %s %s", r.status_code, r.text[:200])
         raise HTTPException(502 if r.status_code >= 500 else 403, "Subscription not verified")
     ent = (r.json().get("subscriber", {}).get("entitlements") or {}).get("pro")
