@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.fixmyhomecam.xal70a",
+      "bundleIdentifier": "com.behappyapp",
       "infoPlist": {
         "NSCameraUsageDescription": "Photograph home problems for AI diagnosis",
         "NSPhotoLibraryUsageDescription": "Upload photos of problems and your work"
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#F8F5EE"
       },
-      "package": "com.emergent.fixmyhomecam.xal70a",
+      "package": "com.behappyapp",
       "permissions": [
         "android.permission.CAMERA"
       ]
