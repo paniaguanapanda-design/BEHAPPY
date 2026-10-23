@@ -24,8 +24,8 @@ export default function Scan() {
 
   const capture = async () => {
     try {
-      const pic = await cam.current?.takePictureAsync({ base64: true, quality: 0.5 });
-      if (pic?.base64) await run(pic.base64, true);
+      const pic = await cam.current?.takePictureAsync({ quality: 0.7, shutterSound: false });
+      if (pic?.uri) await run(pic.uri, pic.width, pic.height, true);
     } catch (e: any) {
       toast(e?.message || t("error_generic"), "error");
     }

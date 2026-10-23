@@ -5,6 +5,7 @@ import { api } from "@/src/api";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
+import { compressToBase64 } from "@/src/compressImage";
 
 export function useDiagnose() {
   const [analyzing, setAnalyzing] = useState(false);
@@ -12,9 +13,10 @@ export function useDiagnose() {
   const { lang, t } = useI18n();
   const toast = useToast();
 
-  const run = async (base64: string, replace = false) => {
+  const run = async (uri: string, width?: number, height?: number, replace = false) => {
     setAnalyzing(true);
     try {
+      const base64 = await compressToBase64(uri, width, height);
       const d = await api<{ diagnosis_id: string }>("/diagnose", { body: { image_base64: base64, language: lang } });
       queryClient.invalidateQueries({ queryKey: ["diagnoses"] });
       const target = { pathname: "/diagnosis/[id]" as const, params: { id: d.diagnosis_id } };
@@ -28,8 +30,9 @@ export function useDiagnose() {
   };
 
   const pickFromGallery = async (replace = false) => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], base64: true, quality: 0.5 });
-    if (!res.canceled && res.assets[0]?.base64) await run(res.assets[0].base64, replace);
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
+    const a = res.canceled ? null : res.assets[0];
+    if (a) await run(a.uri, a.width, a.height, replace);
   };
 
   return { analyzing, run, pickFromGallery };

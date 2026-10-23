@@ -40,3 +40,8 @@ Gemini 3 Flash (Emergent key) · specialists register in-app · Google + email/p
 
 ## Iteration 5 (2026-06)
 - AI diagnosis now uses the user's own Gemini API key (GEMINI_API_KEY in backend/.env), falls back to EMERGENT_LLM_KEY if absent. Model: gemini-3-flash-preview
+
+## Iteration 6 (2026-06)
+- Removed all seed/demo data and seed code; DB keeps only real user paniaguanapan.d.a@gmail.com
+- Diagnosis speed: client compresses to max 1024px JPEG 0.6 (expo-image-manipulator); server re-shrinks (Pillow), Gemini reasoning_effort=low (~25s -> ~4-5s), image storage moved to background task
+- Pending: testing_agent verification of compression flow (user paused to save to GitHub)

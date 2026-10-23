@@ -5,11 +5,14 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
+import asyncio
 import re
 import json
 import base64
 import logging
 import uuid
+from PIL import Image, ImageOps
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -277,6 +280,19 @@ class DiagnoseIn(BaseModel):
     note: Optional[str] = None
 
 
+MAX_SIDE = 1024
+
+
+def shrink_image(data: bytes) -> bytes:
+    """Resize to max 1024px and recompress as JPEG so Gemini gets a light payload."""
+    im = Image.open(io.BytesIO(data))
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    im.thumbnail((MAX_SIDE, MAX_SIDE))
+    out = io.BytesIO()
+    im.save(out, "JPEG", quality=72, optimize=True)
+    return out.getvalue()
+
+
 def parse_json(text: str) -> dict:
     text = text.strip()
     m = re.search(r"\{.*\}", text, re.S)
@@ -290,13 +306,15 @@ async def diagnose(body: DiagnoseIn, request: Request):
     user = await current_user(request)
     b64 = body.image_base64.split(",", 1)[-1]
     try:
-        raw = base64.b64decode(b64)
+        raw = await run_in_threadpool(shrink_image, base64.b64decode(b64))
     except Exception:
         raise HTTPException(400, "Invalid image")
+    b64 = base64.b64encode(raw).decode()
     lang = "Italian" if body.language == "it" else "Spanish"
     extra = f"User note: {body.note}" if body.note else ""
     chat = LlmChat(api_key=os.environ.get("GEMINI_API_KEY") or EMERGENT_KEY, session_id=new_id("diag"),
-                   system_message="You are a precise home repair diagnostic assistant that outputs JSON only.").with_model("gemini", "gemini-3-flash-preview")
+                   system_message="You are a precise home repair diagnostic assistant that outputs JSON only.").with_model("gemini", "gemini-3-flash-preview") \
+        .with_params(reasoning_effort="low")  # default thinking took ~25s; low keeps quality at ~5s
     text = ""
     try:
         async for ev in chat.stream_message(UserMessage(text=DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra),
@@ -311,11 +329,17 @@ async def diagnose(body: DiagnoseIn, request: Request):
         raise HTTPException(502, "AI analysis failed, please retry")
     if result.get("category") not in CATEGORIES:
         result["category"] = "general"
-    image_path = None
-    try:
-        image_path = await store_bytes(user["user_id"], raw, "image/jpeg", "jpg")
-    except Exception as e:
-        logger.warning("image store failed: %s", e)
+    image_path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4().hex}.jpg"
+
+    async def _store():
+        try:
+            await run_in_threadpool(put_object, image_path, raw, "image/jpeg")
+            await db.files.insert_one({"storage_path": image_path, "owner_id": user["user_id"], "content_type": "image/jpeg",
+                                       "is_deleted": False, "created_at": iso(now())})
+        except Exception as e:
+            logger.warning("image store failed: %s", e)
+
+    asyncio.create_task(_store())  # don't make the user wait for storage
     doc = {"diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path,
            "language": body.language, "created_at": iso(now()), **result}
     await db.diagnoses.insert_one(doc)
@@ -846,62 +870,6 @@ async def revenuecat_sync(body: RCSyncIn, request: Request):
     return await membership_payload(user["user_id"])
 
 
-# ---------------- Seed ----------------
-SEED = [
-    {"name": "Marco Rossi", "category": "plumbing", "city": "Milano", "years_experience": 12, "hourly_rate": "35 EUR/h",
-     "bio": "Idraulico certificato. Perdite, scarichi, caldaie e bagni completi. / Fontanero certificado.",
-     "avatar": "https://images.pexels.com/photos/8487397/pexels-photo-8487397.jpeg?auto=compress&cs=tinysrgb&w=600",
-     "portfolio": ["https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=800&q=80",
-                   "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=800&q=80"],
-     "rating": 4.9, "reviews": 3, "verified": True},
-    {"name": "Lucía Fernández", "category": "electrical", "city": "Madrid", "years_experience": 8, "hourly_rate": "30 EUR/h",
-     "bio": "Electricista autorizada. Cuadros eléctricos, enchufes, iluminación LED y averías urgentes.",
-     "avatar": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=600&q=80",
-     "portfolio": ["https://images.pexels.com/photos/19841115/pexels-photo-19841115.jpeg?auto=compress&cs=tinysrgb&w=800",
-                   "https://images.unsplash.com/photo-1558002038-1055907df827?w=800&q=80"],
-     "rating": 4.8, "reviews": 2, "verified": True},
-    {"name": "Giovanni Bianchi", "category": "carpentry", "city": "Roma", "years_experience": 15, "hourly_rate": "32 EUR/h",
-     "bio": "Falegname: porte, finestre, mobili su misura e parquet.",
-     "avatar": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&q=80",
-     "portfolio": ["https://images.unsplash.com/photo-1588854337236-6889d631faa8?w=800&q=80"],
-     "rating": 4.6, "reviews": 2, "verified": False},
-    {"name": "Carlos Méndez", "category": "painting", "city": "Barcelona", "years_experience": 6, "hourly_rate": "25 EUR/h",
-     "bio": "Pintor profesional. Humedades, grietas, pintura interior y exterior.",
-     "avatar": "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80",
-     "portfolio": ["https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=800&q=80"],
-     "rating": 4.7, "reviews": 2, "verified": True},
-]
-
-
-async def seed():
-    if await db.specialists.count_documents({"seed": True}) > 0:
-        return
-    pw = bcrypt.hashpw(b"specialist123", bcrypt.gensalt()).decode()
-    for i, s in enumerate(SEED):
-        uid, sid = new_id("user"), new_id("spec")
-        email = f"specialist{i + 1}@fixai.app"
-        await db.users.update_one({"email": email}, {"$setOnInsert": {
-            "user_id": uid, "email": email, "name": s["name"], "picture": s["avatar"], "role": "specialist",
-            "specialist_id": sid, "password_hash": pw, "created_at": iso(now())}}, upsert=True)
-        u = await db.users.find_one({"email": email})
-        uid, sid = u["user_id"], u["specialist_id"]
-        await db.specialists.insert_one({
-            "specialist_id": sid, "user_id": uid, "name": s["name"], "category": s["category"], "bio": s["bio"],
-            "phone": f"+3933312345{i}", "whatsapp": f"+3933312345{i}", "city": s["city"],
-            "years_experience": s["years_experience"], "hourly_rate": s["hourly_rate"], "avatar": s["avatar"],
-            "portfolio": [{"item_id": new_id("pf"), "image": p, "caption": "", "created_at": iso(now())} for p in s["portfolio"]],
-            "verified": s["verified"], "verification_status": "verified" if s["verified"] else "none",
-            "rating_avg": s["rating"], "reviews_count": s["reviews"], "recommend_count": s["reviews"],
-            "jobs_completed": s["years_experience"] * 10, "seed": True, "created_at": iso(now())})
-        names = ["Anna", "Pedro", "Sofia"]
-        for j in range(s["reviews"]):
-            await db.reviews.insert_one({"review_id": new_id("rev"), "specialist_id": sid, "user_id": f"seed_{j}",
-                                         "user_name": names[j], "user_picture": None, "rating": 5 if j == 0 else 4,
-                                         "comment": ["Lavoro perfetto, puntuale e pulito!", "Muy profesional, lo recomiendo.",
-                                                     "Ottimo rapporto qualità/prezzo."][j],
-                                         "recommend": True, "created_at": iso(now())})
-
-
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -911,9 +879,6 @@ async def startup():
     await db.specialists.create_index("specialist_id", unique=True)
     await db.messages.create_index("conversation_id")
     await db.files.create_index("storage_path")
-    await seed()
-    await db.specialists.update_many({"seed": True, "membership_expires_at": {"$exists": False}},
-                                     {"$set": {"membership_expires_at": iso(now() + timedelta(days=3650)), "membership_plan": "yearly"}})
     await db.payment_transactions.create_index("session_id", unique=True)
     try:
         init_storage()
