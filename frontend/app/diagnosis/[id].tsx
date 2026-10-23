@@ -7,7 +7,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, imageUri } from "@/src/api";
-import { useI18n } from "@/src/i18n";
+import { CATEGORIES, useI18n } from "@/src/i18n";
 import { makeStyles, useTheme } from "@/src/theme";
 import { DifficultyBadge } from "@/src/DifficultyBadge";
 import { localPhotos } from "@/src/localPhotos";
@@ -35,6 +35,7 @@ export default function Diagnosis() {
 
   const steps: { title: string; detail: string }[] = d.difficulty === "expert" ? [] : d.steps || [];
   const isAppliance = d.category === "appliance";
+  const canHire = (CATEGORIES as readonly string[]).includes(d.category); // unknown trade: never open specialists
   const photo = localPhotos[d.diagnosis_id] ?? imageUri(d.image_path);
   const materials: any[] = d.difficulty === "expert" ? [] : d.materials || [];
   const tools: string[] = d.difficulty === "expert" ? [] : d.tools || [];
@@ -98,7 +99,7 @@ export default function Diagnosis() {
                 <View style={styles.outcome} testID="outcome-expert">
                   <Ionicons name="shield-half" size={22} color={colors.error} />
                   <Text style={styles.outcomeText}>{t("expert_hint")}</Text>
-                  <Button title={t("see_specialists")} icon="people" onPress={goPro} testID="see-specialists-button" />
+                  {canHire && <Button title={t("see_specialists")} icon="people" onPress={goPro} testID="see-specialists-button" />}
                 </View>
               )}
               {d.difficulty === "medium" && (
@@ -183,7 +184,7 @@ export default function Diagnosis() {
                 <View style={styles.proBox} testID="medium-pro-box">
                   <Text style={styles.proTitle}>{t("when_pro")}</Text>
                   {d.when_to_call_pro ? <Text style={styles.proText}>{d.when_to_call_pro}</Text> : null}
-                  <Button title={t("see_specialists")} icon="people" onPress={goPro} testID="see-specialists-button" />
+                  {canHire && <Button title={t("see_specialists")} icon="people" onPress={goPro} testID="see-specialists-button" />}
                 </View>
               ) : null}
             </>

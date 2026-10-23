@@ -24,6 +24,7 @@ export function HistoryList({ bottom }: { bottom: number }) {
       keyExtractor={(d) => d.diagnosis_id}
       contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: bottom + 24 }}
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
+      ListEmptyComponent={q.isLoading ? null : <Text style={styles.empty} testID="history-empty">{t("no_recent")}</Text>}
       renderItem={({ item: d }) => {
         const photo = localPhotos[d.diagnosis_id] ?? imageUri(d.image_path);
         return (
@@ -53,4 +54,5 @@ const useStyles = makeStyles((c) => ({
   thumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: c.surfaceTertiary },
   title: { fontSize: 16, fontWeight: "700", color: c.onSurface },
   sub: { fontSize: 13, color: c.muted },
+  empty: { fontSize: 15, color: c.muted, textAlign: "center", padding: 24, lineHeight: 22 },
 }));

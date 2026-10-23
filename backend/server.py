@@ -320,12 +320,19 @@ If the image is not a home problem set is_home_problem false and still fill titl
 TRANSLATABLE = ["description", "safety_warnings", "materials", "tools", "steps", "estimated_time", "when_to_call_pro"]
 
 
+APPLIANCE_WORDS = ["lavadora", "horno", "nevera", "frigor", "lavavajillas", "secadora", "microondas", "electrodom",
+                   "lavatrice", "forno", "lavastoviglie", "asciugatrice", "microonde", "elettrodom",
+                   "washing machine", "oven", "fridge", "refrigerator", "dishwasher", "dryer", "microwave", "appliance"]
+
+
 def normalize_diagnosis(r: dict) -> dict:
-    if r.get("is_appliance"):
+    text = " ".join(str(r.get(k) or "") for k in ("title_es", "title_it", "title", "category")).lower()
+    if r.get("is_appliance") or any(w in text for w in APPLIANCE_WORDS):
+        r["is_appliance"] = True
         r["category"] = "appliance"
         r["steps"], r["materials"], r["tools"] = [], [], []
     elif r.get("category") not in CATEGORIES:
-        r["category"] = "masonry"
+        r["category"] = "unknown"  # never force an unknown trade into masonry
     diff = r.get("difficulty")
     r["difficulty"] = "expert" if diff in ("hard", "expert") else diff if diff in ("easy", "medium") else "medium"
     if r["difficulty"] == "expert":
@@ -840,11 +847,6 @@ async def update_quote(qid: str, body: QuoteStatusIn, request: Request):
 PLANS = {"monthly": {"amount": 19.99, "days": 30}, "yearly": {"amount": 199.99, "days": 365}}
 
 
-class RCSyncIn(BaseModel):
-    plan: str
-    expiration_date: Optional[str] = None
-
-
 async def activate_membership(user_id: str, plan: str, source: str, expires_at: Optional[datetime] = None):
     current = await db.memberships.find_one({"user_id": user_id}, {"_id": 0})
     if expires_at is None:
@@ -877,19 +879,30 @@ async def membership_me(request: Request):
 
 
 @api.post("/membership/revenuecat-sync")
-async def revenuecat_sync(body: RCSyncIn, request: Request):
-    """Mirror the in-app (RevenueCat) entitlement expiry so the specialist is listed for other users."""
+async def revenuecat_sync(request: Request):
+    """Ask RevenueCat (server-side, secret key) whether the user's 'pro' entitlement is active; never trust the phone."""
     user = await current_user(request)
-    if body.plan not in PLANS:
-        raise HTTPException(400, "Invalid plan")
-    exp = None
-    if body.expiration_date:
-        exp = datetime.fromisoformat(body.expiration_date.replace("Z", "+00:00"))
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-    else:
-        exp = now() + timedelta(days=PLANS[body.plan]["days"])
-    await activate_membership(user["user_id"], body.plan, "revenuecat", exp)
+    secret = os.environ.get("REVENUECAT_SECRET_API_KEY")
+    if not secret:
+        raise HTTPException(503, "Subscription check unavailable")
+    async with httpx.AsyncClient(timeout=20) as hc:
+        r = await hc.get(f"https://api.revenuecat.com/v1/subscribers/{user['user_id']}",
+                         headers={"Authorization": f"Bearer {secret}"})
+    if r.status_code != 200:
+        logger.warning("RevenueCat check failed: %s %s", r.status_code, r.text[:200])
+        raise HTTPException(502 if r.status_code >= 500 else 403, "Subscription not verified")
+    ent = (r.json().get("subscriber", {}).get("entitlements") or {}).get("pro")
+    exp_raw = (ent or {}).get("expires_date")
+    if not ent or not exp_raw:
+        raise HTTPException(403, "No active subscription")
+    exp = datetime.fromisoformat(exp_raw.replace("Z", "+00:00"))
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp <= now():
+        raise HTTPException(403, "Subscription expired")
+    pid = (ent.get("product_identifier") or "").lower()
+    plan = "yearly" if any(k in pid for k in ("anual", "annual", "year")) else "monthly"
+    await activate_membership(user["user_id"], plan, "revenuecat", exp)
     return await membership_payload(user["user_id"])
 
 

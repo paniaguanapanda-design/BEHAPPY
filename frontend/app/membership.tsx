@@ -51,9 +51,7 @@ export default function MembershipScreen() {
     const key = `${ent.productIdentifier}-${ent.expirationDate}`;
     if (synced.current === key) return;
     synced.current = key;
-    const annualId = pkgFor("yearly")?.product.identifier;
-    const p: Plan = ent.productIdentifier === annualId || /annual|year/i.test(ent.productIdentifier) ? "yearly" : "monthly";
-    api("/membership/revenuecat-sync", { body: { plan: p, expiration_date: ent.expirationDate } })
+    api("/membership/revenuecat-sync", { method: "POST" })
       .then(refreshAll)
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
