@@ -790,8 +790,8 @@ async def create_request(body: RequestIn, request: Request):
     await require_active_specialist(spec)
     diag_title = None
     if body.diagnosis_id:
-        d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id}, {"_id": 0, "title": 1})
-        diag_title = d.get("title") if d else None
+        d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id, "user_id": user["user_id"]}, {"_id": 0, "title_es": 1})
+        diag_title = d.get("title_es") if d else None
     conv = await get_or_create_conversation(user, spec)
     req = {"request_id": new_id("req"), "client_id": user["user_id"], "client_name": user["name"],
            "specialist_id": spec["specialist_id"], "specialist_user_id": spec["user_id"], "specialist_name": spec["name"],
@@ -825,9 +825,16 @@ async def update_request(rid: str, body: RequestStatusIn, request: Request):
         {"cancelled"} if req["client_id"] == user["user_id"] else set()
     if body.status not in allowed:
         raise HTTPException(403, "Not allowed")
+    # Solo estos cambios; completada, rechazada y cancelada son finales
+    transitions = {"pending": {"accepted", "rejected", "cancelled"}, "accepted": {"completed", "cancelled"}}
+    if body.status not in transitions.get(req["status"], set()):
+        raise HTTPException(409, f"No se puede cambiar de {req['status']} a {body.status}")
     if body.status == "accepted":
         await require_active_specialist(await db.specialists.find_one({"specialist_id": req["specialist_id"]}, {"_id": 0}))
-    await db.service_requests.update_one({"request_id": rid}, {"$set": {"status": body.status, "updated_at": iso(now())}})
+    res = await db.service_requests.update_one({"request_id": rid, "status": req["status"]},
+                                               {"$set": {"status": body.status, "updated_at": iso(now())}})
+    if res.modified_count == 0:
+        raise HTTPException(409, "La peticion ya cambio de estado")
     if body.status == "completed":
         await db.specialists.update_one({"specialist_id": req["specialist_id"]}, {"$inc": {"jobs_completed": 1}})
     return {**req, "status": body.status}
