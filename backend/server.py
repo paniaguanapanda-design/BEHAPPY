@@ -74,6 +74,7 @@ def get_gemini():
 
 async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
     """Pide a Gemini una respuesta en JSON, con o sin foto."""
+    rate_limit("gemini-global", 600, 3600)
     contents = []
     if image_b64:
         contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
@@ -180,6 +181,29 @@ async def store_bytes(user_id: str, data: bytes, content_type: str, ext: str) ->
     return stored
 
 
+# ---------------- Limite de peticiones ----------------
+import time as _time
+from collections import defaultdict, deque
+
+_hits = defaultdict(deque)
+
+
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit(key: str, limit: int, window_s: int) -> None:
+    """Permite como maximo `limit` usos de `key` cada `window_s` segundos."""
+    t = _time.monotonic()
+    if len(_hits) > 20000:
+        _hits.clear()
+    q = _hits[key]
+    while q and q[0] < t - window_s:
+        q.popleft()
+    if len(q) >= limit:
+        raise HTTPException(429, "Demasiadas peticiones, espera un momento e intentalo de nuevo")
+    q.append(t)
+    
 # ---------------- Auth ----------------
 def public_user(u: dict) -> dict:
     return {k: u.get(k) for k in ["user_id", "email", "name", "picture", "role", "specialist_id", "created_at"]}
@@ -236,12 +260,15 @@ class SessionIn(BaseModel):
 
 
 @api.post("/auth/register")
-async def register(body: RegisterIn):
+async def register(body: RegisterIn, request: Request):
+    rate_limit(f"reg:{client_ip(request)}", 10, 3600)
     email = body.email.strip().lower()
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise HTTPException(400, "Invalid email")
     if len(body.password) < 6:
         raise HTTPException(400, "Password must be at least 6 characters")
+    if len(body.password) > 128:
+        raise HTTPException(400, "Password too long")
     if await db.users.find_one({"email": email}):
         raise HTTPException(400, "Email already registered")
     user = {"user_id": new_id("user"), "email": email, "name": body.name.strip() or email.split("@")[0],
@@ -253,15 +280,14 @@ async def register(body: RegisterIn):
 
 
 @api.post("/auth/login")
-async def login(body: LoginIn):
+async def login(body: LoginIn, request: Request):
     email = body.email.strip().lower()
+    rate_limit(f"login-ip:{client_ip(request)}", 30, 600)
+    rate_limit(f"login-mail:{email}", 8, 600)
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user or not user.get("password_hash") or not await run_in_threadpool(bcrypt.checkpw, body.password.encode(), user["password_hash"].encode()):
         raise HTTPException(401, "Invalid email or password")
-    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
-
-
-@api.post("/auth/session")
+    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}@api.post("/auth/session")
 async def google_session(body: SessionIn):
     async with httpx.AsyncClient(timeout=20) as hc:
         r = await hc.get("https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
@@ -468,6 +494,8 @@ def parse_json(text: str) -> dict:
 @api.post("/diagnose")
 async def diagnose(body: DiagnoseIn, request: Request):
     user = await current_user(request)
+    rate_limit(f"diag-min:{user['user_id']}", 8, 60)
+    rate_limit(f"diag-day:{user['user_id']}", 40, 86400)
     b64 = body.image_base64.split(",", 1)[-1]
     try:
         raw = await run_in_threadpool(shrink_image, base64.b64decode(b64))
