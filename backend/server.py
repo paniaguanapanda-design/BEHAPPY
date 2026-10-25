@@ -162,6 +162,15 @@ def get_object(path: str):
     if LOCAL_UPLOAD_DIR.resolve() not in target.parents or not target.is_file():
         raise HTTPException(404, "File not found")
     return target.read_bytes(), "application/octet-stream"
+def delete_object(path: str) -> None:
+    if S3_BUCKET:
+        _s3_client().delete_object(Bucket=S3_BUCKET, Key=path)
+    else:
+        target = (LOCAL_UPLOAD_DIR / path).resolve()
+        if LOCAL_UPLOAD_DIR.resolve() in target.parents and target.is_file():
+            target.unlink()
+            
+            
 async def store_bytes(user_id: str, data: bytes, content_type: str, ext: str) -> str:
     path = f"{APP_NAME}/uploads/{user_id}/{uuid.uuid4().hex}.{ext}"
     result = await run_in_threadpool(put_object, path, data, content_type)
@@ -288,6 +297,45 @@ async def logout(request: Request):
         await db.user_sessions.delete_one({"session_token": auth[7:]})
     return {"ok": True}
 
+
+class DeleteAccountIn(BaseModel):
+    password: Optional[str] = None
+
+
+@api.post("/auth/delete-account")
+async def delete_account(body: DeleteAccountIn, request: Request):
+    user = await current_user(request)
+    uid = user["user_id"]
+    full = await db.users.find_one({"user_id": uid}, {"_id": 0})
+    if full and full.get("password_hash"):
+        ok = body.password and await run_in_threadpool(bcrypt.checkpw, body.password.encode(), full["password_hash"].encode())
+        if not ok:
+            raise HTTPException(401, "Contrasena incorrecta")
+    specs = await db.specialists.find({"user_id": uid}, {"_id": 0, "specialist_id": 1}).to_list(10)
+    sids = [s["specialist_id"] for s in specs]
+    convs = await db.conversations.find({"participants": uid}, {"_id": 0, "conversation_id": 1}).to_list(10000)
+    cids = [c["conversation_id"] for c in convs]
+    reviewed = await db.reviews.find({"user_id": uid}, {"_id": 0, "specialist_id": 1}).to_list(10000)
+    files = await db.files.find({"owner_id": uid}, {"_id": 0, "storage_path": 1}).to_list(10000)
+    for f in files:
+        try:
+            await run_in_threadpool(delete_object, f["storage_path"])
+        except Exception as e:
+            logger.warning("no se pudo borrar archivo %s: %s", f["storage_path"], e)
+    for name in await db.list_collection_names():
+        if name == "payment_transactions":
+            continue  # los registros de pagos se conservan por obligacion legal
+        if name == "users":
+            q = {"user_id": uid}
+        else:
+            q = {"$or": [{"user_id": uid}, {"client_id": uid}, {"specialist_user_id": uid}, {"sender_id": uid},
+                         {"owner_id": uid}, {"specialist_id": {"$in": sids}}, {"conversation_id": {"$in": cids}}]}
+        await db[name].delete_many(q)
+    for sid in {r["specialist_id"] for r in reviewed} - set(sids):
+        rest = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
+        avg = round(sum(r["rating"] for r in rest) / len(rest), 1) if rest else None
+        await db.specialists.update_one({"specialist_id": sid}, {"$set": {"rating_avg": avg, "reviews_count": len(rest)}})
+    return {"ok": True}
 
 # ---------------- Files ----------------
 @api.post("/upload")
