@@ -650,6 +650,7 @@ async def list_reviews(sid: str, request: Request):
 
 @api.post("/specialists/{sid}/reviews")
 async def add_review(sid: str, body: ReviewIn, request: Request):
+    from pymongo.errors import DuplicateKeyError
     user = await current_user(request)
     s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0})
     if not s:
@@ -665,7 +666,10 @@ async def add_review(sid: str, body: ReviewIn, request: Request):
     if review["comment"]:
         both = await caption_both(review["comment"])
         review["comment_es"], review["comment_it"] = both["es"], both["it"]
-    await db.reviews.insert_one(review)
+    try:
+        await db.reviews.insert_one(review)
+    except DuplicateKeyError:
+        raise HTTPException(400, "You already rated this specialist")
     review.pop("_id", None)
     all_r = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
     avg = round(sum(r["rating"] for r in all_r) / len(all_r), 1)
@@ -683,9 +687,11 @@ class ConversationIn(BaseModel):
 
 
 async def get_or_create_conversation(client_user: dict, spec: dict) -> dict:
+    from pymongo.errors import DuplicateKeyError
     if client_user["user_id"] == spec["user_id"]:
         raise HTTPException(400, "Cannot chat with yourself")
-    conv = await db.conversations.find_one({"client_id": client_user["user_id"], "specialist_id": spec["specialist_id"]}, {"_id": 0})
+    key = {"client_id": client_user["user_id"], "specialist_id": spec["specialist_id"]}
+    conv = await db.conversations.find_one(key, {"_id": 0})
     if conv:
         return conv
     conv = {"conversation_id": new_id("conv"), "client_id": client_user["user_id"], "client_name": client_user["name"],
@@ -693,7 +699,10 @@ async def get_or_create_conversation(client_user: dict, spec: dict) -> dict:
             "specialist_user_id": spec["user_id"], "specialist_name": spec["name"], "specialist_avatar": spec.get("avatar"),
             "participants": [client_user["user_id"], spec["user_id"]], "last_message": "", "updated_at": iso(now()),
             "unread": {client_user["user_id"]: 0, spec["user_id"]: 0}}
-    await db.conversations.insert_one(conv)
+    try:
+        await db.conversations.insert_one(conv)
+    except DuplicateKeyError:
+        return await db.conversations.find_one(key, {"_id": 0})
     conv.pop("_id", None)
     return conv
 
@@ -747,7 +756,7 @@ async def list_messages(cid: str, request: Request):
     user = await current_user(request)
     await get_conv_for(cid, user)
     await db.conversations.update_one({"conversation_id": cid}, {"$set": {f"unread.{user['user_id']}": 0}})
-    msgs = await db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    msgs = list(reversed(await db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)))
     qids = [m["quote_id"] for m in msgs if m.get("quote_id")]
     if qids:
         quotes = {q["quote_id"]: q for q in await db.quotes.find({"quote_id": {"$in": qids}}, {"_id": 0}).to_list(500)}
@@ -967,6 +976,14 @@ async def startup():
     await db.specialists.create_index("specialist_id", unique=True)
     await db.messages.create_index("conversation_id")
     await db.files.create_index("storage_path")
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
     # migrate single category -> categories (trades limited to the 5 supported ones)
     async for s in db.specialists.find({"categories": {"$exists": False}}, {"_id": 0, "specialist_id": 1, "category": 1}):
