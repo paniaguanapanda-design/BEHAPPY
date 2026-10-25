@@ -406,8 +406,9 @@ async def diagnose(body: DiagnoseIn, request: Request):
             logger.warning("image store failed: %s", e)
 
     asyncio.create_task(_store())  # don't make the user wait for storage
-    doc = {"diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path,
-           "language": body.language, "created_at": iso(now()), **result}
+    doc = {**result, "diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path,
+            "language": body.language, "created_at": iso(now())}
+    doc.pop("_id", None)
     await db.diagnoses.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -929,7 +930,7 @@ async def startup():
     await db.specialists.update_many({"categories": "appliances"}, {"$pull": {"categories": "appliances"}})
     await db.specialists.update_many({"verification_status": "verified", "verified_by": {"$exists": False}},
                                      {"$set": {"verification_status": "in_review", "verified": False}})
-    await db.specialists.update_many({}, {"$unset": {"city": "", "years_experience": "", "hourly_rate": "", "jobs_completed": "",
+    await db.specialists.update_many({}, {"$unset": {"city": "", "years_experience": "", "hourly_rate": "", 
                                                      "recommend_count": "", "category": ""}})
     try:
         init_storage()
