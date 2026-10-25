@@ -25,8 +25,8 @@ import requests
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, TextDelta, StreamDone  # noqa: E402
-
+from google import genai
+from google.genai import types
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
@@ -58,30 +58,36 @@ SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "teja
 LANG_NAME = {"es": "Spanish", "it": "Italian"}
 
 
-async def _gemini_once(api_key: str, prompt: str, image_b64: Optional[str]) -> dict:
-    chat = LlmChat(api_key=api_key, session_id=new_id("ai"),
-                   system_message="You output valid JSON only, no markdown.").with_model("gemini", "gemini-3-flash-preview")
-    if api_key != EMERGENT_KEY:  # Emergent proxy (openai-compatible) rejects reasoning_effort -> UnsupportedParamsError
-        chat = chat.with_params(reasoning_effort="low")  # default thinking took ~25s; low keeps quality at ~5s
-    text = ""
-    msg = UserMessage(text=prompt, file_contents=[ImageContent(image_base64=image_b64)] if image_b64 else None)
-    async for ev in chat.stream_message(msg):
-        if isinstance(ev, TextDelta):
-            text += ev.content
-        elif isinstance(ev, StreamDone):
-            break
-    return parse_json(text)
+GEMINI_MODEL = "gemini-3-flash-preview"
+_gemini_client = None
+
+
+def get_gemini():
+    global _gemini_client
+    if _gemini_client is None:
+        key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise RuntimeError("Falta GEMINI_API_KEY en backend/.env")
+        _gemini_client = genai.Client(api_key=key)
+    return _gemini_client
 
 
 async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
-    """Use the owner's Gemini key first; if it fails (e.g. daily quota reached) fall back to the Emergent universal key."""
-    own = os.environ.get("GEMINI_API_KEY")
-    if own:
-        try:
-            return await _gemini_once(own, prompt, image_b64)
-        except Exception as e:
-            logger.warning("own Gemini key failed, falling back to universal key: %s", str(e)[:200])
-    return await _gemini_once(EMERGENT_KEY, prompt, image_b64)
+    """Pide a Gemini una respuesta en JSON, con o sin foto."""
+    contents = []
+    if image_b64:
+        contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
+    contents.append(prompt)
+    response = await get_gemini().aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction="You output valid JSON only, no markdown.",
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_level="low"),
+        ),
+    )
+    return parse_json(response.text or "")
 
 
 async def caption_both(caption: str) -> dict:
@@ -108,37 +114,63 @@ def new_id(prefix: str) -> str:
 
 
 # ---------------- Storage ----------------
+# En desarrollo guarda las fotos en backend/uploads_local.
+# En produccion, si defines S3_BUCKET (y sus claves), usa S3 o Cloudflare R2.
+LOCAL_UPLOAD_DIR = Path(__file__).resolve().parent / "uploads_local"
+S3_BUCKET = os.environ.get("S3_BUCKET")
+_s3 = None
+
+
+def _s3_client():
+    global _s3
+    if _s3 is None:
+        import boto3
+        _s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
+            aws_access_key_id=os.environ["S3_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"],
+            region_name=os.environ.get("S3_REGION", "auto"),
+        )
+    return _s3
+
+
 def init_storage():
-    global storage_key
-    if storage_key:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    if S3_BUCKET:
+        _s3_client()
+    else:
+        LOCAL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    global storage_key
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    if resp.status_code == 503:
-        storage_key = None
-        key = init_storage()
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    if resp.status_code == 402:
-        raise HTTPException(402, "Storage credits exhausted")
-    resp.raise_for_status()
-    return resp.json()
+    if S3_BUCKET:
+        _s3_client().put_object(Bucket=S3_BUCKET, Key=path, Body=data, ContentType=content_type)
+    else:
+        target = (LOCAL_UPLOAD_DIR / path).resolve()
+        if LOCAL_UPLOAD_DIR.resolve() not in target.parents:
+            raise HTTPException(400, "Invalid path")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    return {"path": path}
 
 
 def get_object(path: str):
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-
-
+    if S3_BUCKET:
+        obj = _s3_client().get_object(Bucket=S3_BUCKET, Key=path)
+        return obj["Body"].read(), obj.get("ContentType", "application/octet-stream")
+    target = (LOCAL_UPLOAD_DIR / path).resolve()
+    if LOCAL_UPLOAD_DIR.resolve() not in target.parents or not target.is_file():
+        raise HTTPException(404, "File not found")
+    return target.read_bytes(), "application/octet-stream"
+def delete_object(path: str) -> None:
+    if S3_BUCKET:
+        _s3_client().delete_object(Bucket=S3_BUCKET, Key=path)
+    else:
+        target = (LOCAL_UPLOAD_DIR / path).resolve()
+        if LOCAL_UPLOAD_DIR.resolve() in target.parents and target.is_file():
+            target.unlink()
+            
+            
 async def store_bytes(user_id: str, data: bytes, content_type: str, ext: str) -> str:
     path = f"{APP_NAME}/uploads/{user_id}/{uuid.uuid4().hex}.{ext}"
     result = await run_in_threadpool(put_object, path, data, content_type)
@@ -214,7 +246,7 @@ async def register(body: RegisterIn):
         raise HTTPException(400, "Email already registered")
     user = {"user_id": new_id("user"), "email": email, "name": body.name.strip() or email.split("@")[0],
             "picture": None, "role": "client", "specialist_id": None,
-            "password_hash": bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode(),
+            "password_hash": (await run_in_threadpool(bcrypt.hashpw, body.password.encode(), bcrypt.gensalt())).decode(),
             "created_at": iso(now())}
     await db.users.insert_one(user)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
@@ -224,7 +256,7 @@ async def register(body: RegisterIn):
 async def login(body: LoginIn):
     email = body.email.strip().lower()
     user = await db.users.find_one({"email": email}, {"_id": 0})
-    if not user or not user.get("password_hash") or not bcrypt.checkpw(body.password.encode(), user["password_hash"].encode()):
+    if not user or not user.get("password_hash") or not await run_in_threadpool(bcrypt.checkpw, body.password.encode(), user["password_hash"].encode()):
         raise HTTPException(401, "Invalid email or password")
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
@@ -266,15 +298,67 @@ async def logout(request: Request):
     return {"ok": True}
 
 
+class DeleteAccountIn(BaseModel):
+    password: Optional[str] = None
+
+
+@api.post("/auth/delete-account")
+async def delete_account(body: DeleteAccountIn, request: Request):
+    user = await current_user(request)
+    uid = user["user_id"]
+    full = await db.users.find_one({"user_id": uid}, {"_id": 0})
+    if full and full.get("password_hash"):
+        ok = body.password and await run_in_threadpool(bcrypt.checkpw, body.password.encode(), full["password_hash"].encode())
+        if not ok:
+            raise HTTPException(401, "Contrasena incorrecta")
+    specs = await db.specialists.find({"user_id": uid}, {"_id": 0, "specialist_id": 1}).to_list(10)
+    sids = [s["specialist_id"] for s in specs]
+    convs = await db.conversations.find({"participants": uid}, {"_id": 0, "conversation_id": 1}).to_list(10000)
+    cids = [c["conversation_id"] for c in convs]
+    reviewed = await db.reviews.find({"user_id": uid}, {"_id": 0, "specialist_id": 1}).to_list(10000)
+    files = await db.files.find({"owner_id": uid}, {"_id": 0, "storage_path": 1}).to_list(10000)
+    for f in files:
+        try:
+            await run_in_threadpool(delete_object, f["storage_path"])
+        except Exception as e:
+            logger.warning("no se pudo borrar archivo %s: %s", f["storage_path"], e)
+    for name in await db.list_collection_names():
+        if name == "payment_transactions":
+            continue  # los registros de pagos se conservan por obligacion legal
+        if name == "users":
+            q = {"user_id": uid}
+        else:
+            q = {"$or": [{"user_id": uid}, {"client_id": uid}, {"specialist_user_id": uid}, {"sender_id": uid},
+                         {"owner_id": uid}, {"specialist_id": {"$in": sids}}, {"conversation_id": {"$in": cids}}]}
+        await db[name].delete_many(q)
+    for sid in {r["specialist_id"] for r in reviewed} - set(sids):
+        rest = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
+        avg = round(sum(r["rating"] for r in rest) / len(rest), 1) if rest else None
+        await db.specialists.update_one({"specialist_id": sid}, {"$set": {"rating_avg": avg, "reviews_count": len(rest)}})
+    return {"ok": True}
+
 # ---------------- Files ----------------
 @api.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...)):
     user = await current_user(request)
-    data = await file.read()
-    if len(data) > 10 * 1024 * 1024:
+    max_bytes = 10 * 1024 * 1024
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
         raise HTTPException(413, "File too large")
-    ext = (file.filename or "img.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
-    path = await store_bytes(user["user_id"], data, file.content_type or "image/jpeg", ext)
+    try:
+        img = Image.open(io.BytesIO(data))
+        fmt = (img.format or "").upper()
+        width, height = img.size
+        img.verify()
+    except Exception:
+        raise HTTPException(400, "El archivo no es una imagen valida")
+    if width * height > 40_000_000:
+        raise HTTPException(400, "Imagen demasiado grande")
+    allowed = {"JPEG": ("jpg", "image/jpeg"), "PNG": ("png", "image/png"), "WEBP": ("webp", "image/webp")}
+    if fmt not in allowed:
+        raise HTTPException(400, "Solo se aceptan fotos JPEG, PNG o WEBP")
+    ext, content_type = allowed[fmt]
+    path = await store_bytes(user["user_id"], data, content_type, ext)
     return {"path": path}
 
 
@@ -282,11 +366,16 @@ async def upload(request: Request, file: UploadFile = File(...)):
 async def get_file(path: str, request: Request, token: Optional[str] = Query(None)):
     auth = request.headers.get("Authorization", "")
     tok = auth[7:] if auth.startswith("Bearer ") else token
-    if not await user_from_token(tok):
+    user = await user_from_token(tok)
+    if not user:
         raise HTTPException(401, "Not authenticated")
     rec = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
     if not rec:
         raise HTTPException(404, "File not found")
+    if rec.get("owner_id") != user["user_id"]:
+        in_portfolio = await db.specialists.find_one({"portfolio.image": path}, {"_id": 1})
+        if not in_portfolio:
+            raise HTTPException(404, "File not found")
     data, ct = await run_in_threadpool(get_object, path)
     return Response(content=data, media_type=rec.get("content_type", ct), headers={"Cache-Control": "private, max-age=86400"})
 
@@ -335,6 +424,10 @@ def normalize_diagnosis(r: dict) -> dict:
         r["category"] = "unknown"  # never force an unknown trade into masonry
     diff = r.get("difficulty")
     r["difficulty"] = "expert" if diff in ("hard", "expert") else diff if diff in ("easy", "medium") else "medium"
+    # Seguridad: el gas siempre es experto; lo electrico solo puede ser "facil" si la IA lo marca asi
+    gas_risk = re.search(r"\b(gas|caldaia|caldera|boiler|stufa|estufa|metano)\b", text) is not None
+    if gas_risk or (r.get("category") == "electrical" and r["difficulty"] != "easy"):
+        r["difficulty"] = "expert"
     if r["difficulty"] == "expert":
         r["steps"], r["materials"], r["tools"] = [], [], []
     for k in ("steps", "materials", "tools", "safety_warnings"):
@@ -345,10 +438,9 @@ def normalize_diagnosis(r: dict) -> dict:
 
 
 class DiagnoseIn(BaseModel):
-    image_base64: str
+    image_base64: str = Field(max_length=14_000_000)
     language: str = "es"
-    note: Optional[str] = None
-
+    note: Optional[str] = Field(default=None, max_length=500)
 
 MAX_SIDE = 1024
 
@@ -400,8 +492,9 @@ async def diagnose(body: DiagnoseIn, request: Request):
             logger.warning("image store failed: %s", e)
 
     asyncio.create_task(_store())  # don't make the user wait for storage
-    doc = {"diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path,
-           "language": body.language, "created_at": iso(now()), **result}
+    doc = {**result, "diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path,
+            "language": body.language, "created_at": iso(now())}
+    doc.pop("_id", None)
     await db.diagnoses.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -605,6 +698,7 @@ async def list_reviews(sid: str, request: Request):
 
 @api.post("/specialists/{sid}/reviews")
 async def add_review(sid: str, body: ReviewIn, request: Request):
+    from pymongo.errors import DuplicateKeyError
     user = await current_user(request)
     s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0})
     if not s:
@@ -620,7 +714,10 @@ async def add_review(sid: str, body: ReviewIn, request: Request):
     if review["comment"]:
         both = await caption_both(review["comment"])
         review["comment_es"], review["comment_it"] = both["es"], both["it"]
-    await db.reviews.insert_one(review)
+    try:
+        await db.reviews.insert_one(review)
+    except DuplicateKeyError:
+        raise HTTPException(400, "You already rated this specialist")
     review.pop("_id", None)
     all_r = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
     avg = round(sum(r["rating"] for r in all_r) / len(all_r), 1)
@@ -638,9 +735,11 @@ class ConversationIn(BaseModel):
 
 
 async def get_or_create_conversation(client_user: dict, spec: dict) -> dict:
+    from pymongo.errors import DuplicateKeyError
     if client_user["user_id"] == spec["user_id"]:
         raise HTTPException(400, "Cannot chat with yourself")
-    conv = await db.conversations.find_one({"client_id": client_user["user_id"], "specialist_id": spec["specialist_id"]}, {"_id": 0})
+    key = {"client_id": client_user["user_id"], "specialist_id": spec["specialist_id"]}
+    conv = await db.conversations.find_one(key, {"_id": 0})
     if conv:
         return conv
     conv = {"conversation_id": new_id("conv"), "client_id": client_user["user_id"], "client_name": client_user["name"],
@@ -648,7 +747,10 @@ async def get_or_create_conversation(client_user: dict, spec: dict) -> dict:
             "specialist_user_id": spec["user_id"], "specialist_name": spec["name"], "specialist_avatar": spec.get("avatar"),
             "participants": [client_user["user_id"], spec["user_id"]], "last_message": "", "updated_at": iso(now()),
             "unread": {client_user["user_id"]: 0, spec["user_id"]: 0}}
-    await db.conversations.insert_one(conv)
+    try:
+        await db.conversations.insert_one(conv)
+    except DuplicateKeyError:
+        return await db.conversations.find_one(key, {"_id": 0})
     conv.pop("_id", None)
     return conv
 
@@ -702,7 +804,7 @@ async def list_messages(cid: str, request: Request):
     user = await current_user(request)
     await get_conv_for(cid, user)
     await db.conversations.update_one({"conversation_id": cid}, {"$set": {f"unread.{user['user_id']}": 0}})
-    msgs = await db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    msgs = list(reversed(await db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)))
     qids = [m["quote_id"] for m in msgs if m.get("quote_id")]
     if qids:
         quotes = {q["quote_id"]: q for q in await db.quotes.find({"quote_id": {"$in": qids}}, {"_id": 0}).to_list(500)}
@@ -745,8 +847,8 @@ async def create_request(body: RequestIn, request: Request):
     await require_active_specialist(spec)
     diag_title = None
     if body.diagnosis_id:
-        d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id}, {"_id": 0, "title": 1})
-        diag_title = d.get("title") if d else None
+        d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id, "user_id": user["user_id"]}, {"_id": 0, "title_es": 1})
+        diag_title = d.get("title_es") if d else None
     conv = await get_or_create_conversation(user, spec)
     req = {"request_id": new_id("req"), "client_id": user["user_id"], "client_name": user["name"],
            "specialist_id": spec["specialist_id"], "specialist_user_id": spec["user_id"], "specialist_name": spec["name"],
@@ -780,9 +882,16 @@ async def update_request(rid: str, body: RequestStatusIn, request: Request):
         {"cancelled"} if req["client_id"] == user["user_id"] else set()
     if body.status not in allowed:
         raise HTTPException(403, "Not allowed")
+    # Solo estos cambios; completada, rechazada y cancelada son finales
+    transitions = {"pending": {"accepted", "rejected", "cancelled"}, "accepted": {"completed", "cancelled"}}
+    if body.status not in transitions.get(req["status"], set()):
+        raise HTTPException(409, f"No se puede cambiar de {req['status']} a {body.status}")
     if body.status == "accepted":
         await require_active_specialist(await db.specialists.find_one({"specialist_id": req["specialist_id"]}, {"_id": 0}))
-    await db.service_requests.update_one({"request_id": rid}, {"$set": {"status": body.status, "updated_at": iso(now())}})
+    res = await db.service_requests.update_one({"request_id": rid, "status": req["status"]},
+                                               {"$set": {"status": body.status, "updated_at": iso(now())}})
+    if res.modified_count == 0:
+        raise HTTPException(409, "La peticion ya cambio de estado")
     if body.status == "completed":
         await db.specialists.update_one({"specialist_id": req["specialist_id"]}, {"$inc": {"jobs_completed": 1}})
     return {**req, "status": body.status}
@@ -915,6 +1024,14 @@ async def startup():
     await db.specialists.create_index("specialist_id", unique=True)
     await db.messages.create_index("conversation_id")
     await db.files.create_index("storage_path")
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
+    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
+    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
     # migrate single category -> categories (trades limited to the 5 supported ones)
     async for s in db.specialists.find({"categories": {"$exists": False}}, {"_id": 0, "specialist_id": 1, "category": 1}):
@@ -923,7 +1040,7 @@ async def startup():
     await db.specialists.update_many({"categories": "appliances"}, {"$pull": {"categories": "appliances"}})
     await db.specialists.update_many({"verification_status": "verified", "verified_by": {"$exists": False}},
                                      {"$set": {"verification_status": "in_review", "verified": False}})
-    await db.specialists.update_many({}, {"$unset": {"city": "", "years_experience": "", "hourly_rate": "", "jobs_completed": "",
+    await db.specialists.update_many({}, {"$unset": {"city": "", "years_experience": "", "hourly_rate": "", 
                                                      "recommend_count": "", "category": ""}})
     try:
         init_storage()
