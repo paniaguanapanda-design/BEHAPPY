@@ -376,6 +376,10 @@ def normalize_diagnosis(r: dict) -> dict:
         r["category"] = "unknown"  # never force an unknown trade into masonry
     diff = r.get("difficulty")
     r["difficulty"] = "expert" if diff in ("hard", "expert") else diff if diff in ("easy", "medium") else "medium"
+    # Seguridad: el gas siempre es experto; lo electrico solo puede ser "facil" si la IA lo marca asi
+    gas_risk = re.search(r"\b(gas|caldaia|caldera|boiler|stufa|estufa|metano)\b", text) is not None
+    if gas_risk or (r.get("category") == "electrical" and r["difficulty"] != "easy"):
+        r["difficulty"] = "expert"
     if r["difficulty"] == "expert":
         r["steps"], r["materials"], r["tools"] = [], [], []
     for k in ("steps", "materials", "tools", "safety_warnings"):
