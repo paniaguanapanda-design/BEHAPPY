@@ -237,7 +237,7 @@ async def register(body: RegisterIn):
         raise HTTPException(400, "Email already registered")
     user = {"user_id": new_id("user"), "email": email, "name": body.name.strip() or email.split("@")[0],
             "picture": None, "role": "client", "specialist_id": None,
-            "password_hash": bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode(),
+            "password_hash": (await run_in_threadpool(bcrypt.hashpw, body.password.encode(), bcrypt.gensalt())).decode(),
             "created_at": iso(now())}
     await db.users.insert_one(user)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
@@ -247,7 +247,7 @@ async def register(body: RegisterIn):
 async def login(body: LoginIn):
     email = body.email.strip().lower()
     user = await db.users.find_one({"email": email}, {"_id": 0})
-    if not user or not user.get("password_hash") or not bcrypt.checkpw(body.password.encode(), user["password_hash"].encode()):
+    if not user or not user.get("password_hash") or not await run_in_threadpool(bcrypt.checkpw, body.password.encode(), user["password_hash"].encode()):
         raise HTTPException(401, "Invalid email or password")
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
@@ -386,10 +386,9 @@ def normalize_diagnosis(r: dict) -> dict:
 
 
 class DiagnoseIn(BaseModel):
-    image_base64: str
+    image_base64: str = Field(max_length=14_000_000)
     language: str = "es"
-    note: Optional[str] = None
-
+    note: Optional[str] = Field(default=None, max_length=500)
 
 MAX_SIDE = 1024
 
