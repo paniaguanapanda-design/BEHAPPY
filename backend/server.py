@@ -293,11 +293,24 @@ async def logout(request: Request):
 @api.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...)):
     user = await current_user(request)
-    data = await file.read()
-    if len(data) > 10 * 1024 * 1024:
+    max_bytes = 10 * 1024 * 1024
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
         raise HTTPException(413, "File too large")
-    ext = (file.filename or "img.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
-    path = await store_bytes(user["user_id"], data, file.content_type or "image/jpeg", ext)
+    try:
+        img = Image.open(io.BytesIO(data))
+        fmt = (img.format or "").upper()
+        width, height = img.size
+        img.verify()
+    except Exception:
+        raise HTTPException(400, "El archivo no es una imagen valida")
+    if width * height > 40_000_000:
+        raise HTTPException(400, "Imagen demasiado grande")
+    allowed = {"JPEG": ("jpg", "image/jpeg"), "PNG": ("png", "image/png"), "WEBP": ("webp", "image/webp")}
+    if fmt not in allowed:
+        raise HTTPException(400, "Solo se aceptan fotos JPEG, PNG o WEBP")
+    ext, content_type = allowed[fmt]
+    path = await store_bytes(user["user_id"], data, content_type, ext)
     return {"path": path}
 
 
