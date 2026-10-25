@@ -311,6 +311,40 @@ async def google_session(body: SessionIn):
     return {"session_token": token, "user": public_user(user)}
 
 
+class GoogleLoginIn(BaseModel):
+    id_token: str = Field(max_length=4096)
+
+
+@api.post("/auth/google")
+async def google_login(body: GoogleLoginIn, request: Request):
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+    rate_limit(f"google-ip:{client_ip(request)}", 30, 600)
+    allowed = [c.strip() for c in os.environ.get("GOOGLE_CLIENT_IDS", "").split(",") if c.strip()]
+    if not allowed:
+        raise HTTPException(503, "Login con Google no configurado")
+    try:
+        info = await run_in_threadpool(google_id_token.verify_oauth2_token, body.id_token, google_requests.Request())
+    except Exception:
+        raise HTTPException(401, "Token de Google invalido")
+    if info.get("aud") not in allowed or not info.get("email_verified"):
+        raise HTTPException(401, "Token de Google invalido")
+    email = info["email"].lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user and user.get("password_hash"):
+        # Evita que alguien que registro antes ese correo con contrasena entre en la cuenta de otra persona
+        raise HTTPException(409, "Este correo ya tiene una cuenta con contrasena. Entra con tu contrasena.")
+    if user:
+        if not user.get("picture") and info.get("picture"):
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"picture": info["picture"]}})
+            user["picture"] = info["picture"]
+    else:
+        user = {"user_id": new_id("user"), "email": email, "name": info.get("name") or email.split("@")[0],
+                "picture": info.get("picture"), "role": "client", "specialist_id": None, "created_at": iso(now())}
+        await db.users.insert_one(user)
+        user.pop("_id", None)
+    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
+
 @api.get("/auth/me")
 async def me(request: Request):
     return public_user(await current_user(request))
