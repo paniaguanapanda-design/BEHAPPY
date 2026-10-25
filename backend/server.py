@@ -25,8 +25,8 @@ import requests
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, TextDelta, StreamDone  # noqa: E402
-
+from google import genai
+from google.genai import types
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
@@ -58,30 +58,36 @@ SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "teja
 LANG_NAME = {"es": "Spanish", "it": "Italian"}
 
 
-async def _gemini_once(api_key: str, prompt: str, image_b64: Optional[str]) -> dict:
-    chat = LlmChat(api_key=api_key, session_id=new_id("ai"),
-                   system_message="You output valid JSON only, no markdown.").with_model("gemini", "gemini-3-flash-preview")
-    if api_key != EMERGENT_KEY:  # Emergent proxy (openai-compatible) rejects reasoning_effort -> UnsupportedParamsError
-        chat = chat.with_params(reasoning_effort="low")  # default thinking took ~25s; low keeps quality at ~5s
-    text = ""
-    msg = UserMessage(text=prompt, file_contents=[ImageContent(image_base64=image_b64)] if image_b64 else None)
-    async for ev in chat.stream_message(msg):
-        if isinstance(ev, TextDelta):
-            text += ev.content
-        elif isinstance(ev, StreamDone):
-            break
-    return parse_json(text)
+GEMINI_MODEL = "gemini-3-flash-preview"
+_gemini_client = None
+
+
+def get_gemini():
+    global _gemini_client
+    if _gemini_client is None:
+        key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise RuntimeError("Falta GEMINI_API_KEY en backend/.env")
+        _gemini_client = genai.Client(api_key=key)
+    return _gemini_client
 
 
 async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
-    """Use the owner's Gemini key first; if it fails (e.g. daily quota reached) fall back to the Emergent universal key."""
-    own = os.environ.get("GEMINI_API_KEY")
-    if own:
-        try:
-            return await _gemini_once(own, prompt, image_b64)
-        except Exception as e:
-            logger.warning("own Gemini key failed, falling back to universal key: %s", str(e)[:200])
-    return await _gemini_once(EMERGENT_KEY, prompt, image_b64)
+    """Pide a Gemini una respuesta en JSON, con o sin foto."""
+    contents = []
+    if image_b64:
+        contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
+    contents.append(prompt)
+    response = await get_gemini().aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction="You output valid JSON only, no markdown.",
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_level="low"),
+        ),
+    )
+    return parse_json(response.text or "")
 
 
 async def caption_both(caption: str) -> dict:
