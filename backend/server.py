@@ -288,11 +288,16 @@ async def upload(request: Request, file: UploadFile = File(...)):
 async def get_file(path: str, request: Request, token: Optional[str] = Query(None)):
     auth = request.headers.get("Authorization", "")
     tok = auth[7:] if auth.startswith("Bearer ") else token
-    if not await user_from_token(tok):
+    user = await user_from_token(tok)
+    if not user:
         raise HTTPException(401, "Not authenticated")
     rec = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
     if not rec:
         raise HTTPException(404, "File not found")
+    if rec.get("owner_id") != user["user_id"]:
+        in_portfolio = await db.specialists.find_one({"portfolio.image": path}, {"_id": 1})
+        if not in_portfolio:
+            raise HTTPException(404, "File not found")
     data, ct = await run_in_threadpool(get_object, path)
     return Response(content=data, media_type=rec.get("content_type", ct), headers={"Cache-Control": "private, max-age=86400"})
 
