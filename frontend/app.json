@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "BE HAPPY",
-    "slug": "frontend",
+    "slug": "behappy",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.behappyapp",
+      "bundleIdentifier": "com.paniaguanapanda.behappy",
       "infoPlist": {
         "NSCameraUsageDescription": "Photograph home problems for AI diagnosis",
         "NSPhotoLibraryUsageDescription": "Upload photos of problems and your work"
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#F8F5EE"
       },
-      "package": "com.behappyapp",
+      "package": "com.paniaguanapanda.behappy",
       "permissions": [
         "android.permission.CAMERA"
       ]
