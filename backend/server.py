@@ -31,11 +31,9 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 JWT_SECRET = os.environ["JWT_SECRET"]
-APP_NAME = os.environ.get("APP_NAME", "fixai-home")
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+APP_NAME = os.environ.get("APP_NAME", "behappy")
+
 storage_key = None
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -287,28 +285,7 @@ async def login(body: LoginIn, request: Request):
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user or not user.get("password_hash") or not await run_in_threadpool(bcrypt.checkpw, body.password.encode(), user["password_hash"].encode()):
         raise HTTPException(401, "Invalid email or password")
-    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}@api.post("/auth/session")
-async def google_session(body: SessionIn):
-    async with httpx.AsyncClient(timeout=20) as hc:
-        r = await hc.get("https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                         headers={"X-Session-ID": body.session_id})
-    if r.status_code != 200:
-        raise HTTPException(401, "Invalid session")
-    data = r.json()
-    email = data["email"].lower()
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    if user:
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"picture": user.get("picture") or data.get("picture")}})
-        user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    else:
-        user = {"user_id": new_id("user"), "email": email, "name": data.get("name") or email.split("@")[0],
-                "picture": data.get("picture"), "role": "client", "specialist_id": None, "created_at": iso(now())}
-        await db.users.insert_one(user)
-        user.pop("_id", None)
-    token = data["session_token"]
-    await db.user_sessions.insert_one({"session_token": token, "user_id": user["user_id"],
-                                       "expires_at": now() + timedelta(days=7), "created_at": now()})
-    return {"session_token": token, "user": public_user(user)}
+    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
 
 class GoogleLoginIn(BaseModel):

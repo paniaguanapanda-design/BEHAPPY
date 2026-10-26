@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "fixai",
+    "scheme": "behappy",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -32,6 +32,7 @@
     },
     "plugins": [
       "expo-router",
+      "@react-native-google-signin/google-signin",
       [
         "expo-splash-screen",
         {
@@ -63,6 +64,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6656b847-e83f-4f6c-95b6-f39d0f8d30c8"
+      }
     }
   }
 }
