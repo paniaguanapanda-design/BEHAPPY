@@ -87,3 +87,5 @@ credentials.json
 *.key
 .credentials
 uploads_local/
+.emergent/
+.gitconfig
