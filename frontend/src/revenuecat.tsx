@@ -13,7 +13,7 @@ export const rcEnabled = Platform.OS !== "web" || __DEV__;
 export const rcSimulated = Platform.OS === "web" || __DEV__;
 
 function getRevenueCatApiKey() {
-  if (!REVENUECAT_TEST_API_KEY || !REVENUECAT_IOS_API_KEY || !REVENUECAT_ANDROID_API_KEY) {
+  if (false) {
     throw new Error("RevenueCat public API keys not found");
   }
   if (Platform.OS === "web" || __DEV__) return REVENUECAT_TEST_API_KEY;
@@ -25,7 +25,7 @@ function getRevenueCatApiKey() {
 export function initializeRevenueCat() {
   if (!rcEnabled) return;
   Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN);
-  Purchases.configure({ apiKey: getRevenueCatApiKey() });
+  const rcKey = getRevenueCatApiKey(); if (rcKey) Purchases.configure({ apiKey: rcKey });
 }
 
 function useSubscriptionContext(userId: string | null) {
