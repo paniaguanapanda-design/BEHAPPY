@@ -46,7 +46,7 @@ export default function SpecialistProfile() {
     );
 
   const isMe = s.user_id === user?.user_id;
-  const heroImg = s.portfolio?.[0]?.image; // cover is always a work photo, never a personal photo
+  const heroImg = s.portfolio?.[0]?.image || s.avatar; // foto de un trabajo; si no hay, la foto de perfil
 
   const openChat = async () => {
     try {
@@ -96,6 +96,9 @@ export default function SpecialistProfile() {
             </View>
           )}
           <View style={styles.heroContent}>
+            <View style={styles.avatarRing}>
+              <Avatar uri={s.avatar} name={s.name} size={80} />
+            </View>
             <View style={{ flex: 1, gap: 6 }}>
               <Text style={styles.name} testID="specialist-name">
                 {s.name}
@@ -201,9 +204,15 @@ export default function SpecialistProfile() {
         {isMe ? (
           <Button style={{ flex: 1 }} title={t("edit_profile")} icon="create-outline" onPress={() => router.push("/specialist-form")} testID="edit-own-profile-button" />
         ) : !s.membership_active ? (
-          <Text style={[styles.muted, { flex: 1, textAlign: "center", paddingVertical: 14 }]} testID="specialist-unavailable">
-            {t("not_available")}
-          </Text>
+          <View style={{ flex: 1, gap: 6 }}>
+            <Pressable testID="chat-specialist-button" style={[styles.iconBtn, { width: "100%", flexDirection: "row", gap: 8 }]} onPress={openChat}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.brandPrimary} />
+              <Text style={styles.chatText}>{t("chat")}</Text>
+            </Pressable>
+            <Text style={[styles.muted, { textAlign: "center", fontSize: 12 }]} testID="specialist-may-reply-later">
+              {t("may_reply_later")}
+            </Text>
+          </View>
         ) : (
           <>
             <Pressable testID="call-specialist-button" style={styles.iconBtn} onPress={() => Linking.openURL(`tel:${s.phone}`)}>
