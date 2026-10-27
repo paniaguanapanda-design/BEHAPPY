@@ -280,6 +280,7 @@ async def register(body: RegisterIn, request: Request):
             "password_hash": (await run_in_threadpool(bcrypt.hashpw, body.password.encode(), bcrypt.gensalt())).decode(),
             "created_at": iso(now())}
     await db.users.insert_one(user)
+    user.pop("_id", None)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
 
@@ -291,6 +292,7 @@ async def login(body: LoginIn, request: Request):
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user or not user.get("password_hash") or not await run_in_threadpool(bcrypt.checkpw, body.password.encode(), user["password_hash"].encode()):
         raise HTTPException(401, "Invalid email or password")
+    await apply_prereg(user)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
 
@@ -326,6 +328,12 @@ async def google_login(body: GoogleLoginIn, request: Request):
                 "picture": info.get("picture"), "role": "client", "specialist_id": None, "created_at": iso(now())}
         await db.users.insert_one(user)
         user.pop("_id", None)
+    try:
+        if not user.get("specialist_id"):
+            await create_profile_from_prereg(user)  # el email de Google esta verificado
+    except Exception as e:
+        logger.warning("perfil desde pre-registro no creado para %s: %s", user["user_id"], e)
+    await apply_prereg(user)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
 @api.get("/auth/me")
@@ -653,6 +661,8 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
                                          "portfolio": [], "verified": False, "verification_status": "none",
                                          "rating_avg": 0.0, "reviews_count": 0, "created_at": iso(now())})
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "specialist", "specialist_id": sid}})
+    user["specialist_id"] = sid
+    await apply_prereg(user)
     return await specialist_out(await db.specialists.find_one({"specialist_id": sid}, {"_id": 0}))
 
 
@@ -1178,6 +1188,74 @@ async def membership_payload(user_id: str) -> dict:
             "plans": {k: v["amount"] for k, v in PLANS.items()}, "currency": "EUR"}
 
 
+# ---------------- Pre-registro desde la web ----------------
+# La web www.be-happyapp.com guarda los pre-registros en esta coleccion (misma base de datos).
+PREREG = "preregistro_especialistas"
+PREREG_FREE_DAYS = 30
+# Especialidad elegida en la web -> oficio de la app (y sub-oficio si aplica)
+PREREG_TRADES = {"idraulica": ("plumbing", None), "elettricita": ("electrical", None), "climatizzazione": ("hvac", None),
+                 "muratura": ("masonry", None), "pittura": ("masonry", "pintura"),
+                 "falegnameria": ("carpentry", None), "serrature": ("carpentry", "cerrajeria")}
+
+
+async def claim_prereg_free_month(user: dict) -> bool:
+    """Si el email del usuario se pre-registro en la web, le da 1 mes gratis (una sola vez).
+    Solo se llama cuando el usuario ya tiene perfil de especialista."""
+    email = (user.get("email") or "").strip().lower()
+    if not email:
+        return False
+    pre = await db[PREREG].find_one_and_update(
+        {"email": email, "promo.estado": "reservada"},
+        {"$set": {"promo.estado": "aplicada", "promo.aplicadaEn": now(), "estado": "activado",
+                  "user_id": user["user_id"], "actualizadoEn": now()}})
+    if not pre:
+        return False
+    current = await db.memberships.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
+    base = now()
+    if current.get("expires_at") and current["expires_at"] > iso(base):
+        base = datetime.fromisoformat(current["expires_at"])
+    await activate_membership(user["user_id"], current.get("plan") or "monthly", "preregistro",
+                              base + timedelta(days=PREREG_FREE_DAYS))
+    logger.info("Mes gratis de pre-registro aplicado a %s", user["user_id"])
+    return True
+
+
+async def create_profile_from_prereg(user: dict) -> None:
+    """Cuenta nueva con email verificado (Google): si se pre-registro en la web, crea su perfil de
+    especialista con esos datos y aplica el mes gratis. Con email sin verificar no se rellenan datos
+    para no mostrar el telefono de otra persona a quien use su email."""
+    email = (user.get("email") or "").strip().lower()
+    pre = await db[PREREG].find_one({"email": email, "promo.estado": "reservada"}, {"_id": 0})
+    if not pre or await db.specialists.find_one({"user_id": user["user_id"]}, {"_id": 1}):
+        return
+    trade = PREREG_TRADES.get(pre.get("especialidad"))
+    if not trade:
+        return  # especialidad sin equivalente en la app: el mes gratis se aplica cuando cree su perfil
+    cat, sub = trade
+    phone = str(pre.get("telefono") or "")[:30]
+    if not phone:
+        return
+    sid = new_id("spec")
+    await db.specialists.insert_one({"specialist_id": sid, "user_id": user["user_id"],
+                                     "name": str(pre.get("nombre") or user.get("name") or "")[:100],
+                                     "categories": [cat], "subtrades": [sub] if sub else [], "bio": "",
+                                     "phone": phone, "whatsapp": phone, "portfolio": [], "verified": False,
+                                     "verification_status": "none", "rating_avg": 0.0, "reviews_count": 0,
+                                     "created_at": iso(now()), "origen": "preregistro"})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "specialist", "specialist_id": sid}})
+    user["role"], user["specialist_id"] = "specialist", sid
+    await claim_prereg_free_month(user)
+
+
+async def apply_prereg(user: dict) -> None:
+    """Nunca bloquea el login/registro si algo falla aqui."""
+    try:
+        if user.get("specialist_id"):
+            await claim_prereg_free_month(user)
+    except Exception as e:
+        logger.warning("pre-registro no aplicado a %s: %s", user.get("user_id"), e)
+
+
 @api.get("/membership/me")
 async def membership_me(request: Request):
     user = await current_user(request)
@@ -1224,6 +1302,10 @@ async def startup():
     await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
     await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
+    try:
+        await db[PREREG].create_index("email", unique=True, name="email_unico")
+    except Exception as e:
+        logger.warning("indice de pre-registro: %s", e)
     # migrate single category -> categories (trades limited to the 5 supported ones)
     async for s in db.specialists.find({"categories": {"$exists": False}}, {"_id": 0, "specialist_id": 1, "category": 1}):
         cats = [s["category"]] if s.get("category") in CATEGORIES else []
