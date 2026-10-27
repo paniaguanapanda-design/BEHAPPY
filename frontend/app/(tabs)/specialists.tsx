@@ -10,7 +10,7 @@ import { api, imageUri } from "@/src/api";
 import { CATEGORIES, tradesLabel, useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Button, Stars, VerifiedBadge } from "@/src/ui";
+import { Avatar, Button, Stars, VerifiedBadge } from "@/src/ui";
 
 export default function Specialists() {
   const styles = useStyles();
@@ -109,13 +109,24 @@ export default function Specialists() {
               onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: item.specialist_id } })}
               style={({ pressed }) => [styles.card, pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 }]}
             >
-              <Image source={{ uri: imageUri(item.portfolio[0]?.image) }} style={styles.cover} contentFit="cover" />
+              {item.portfolio?.length ? <Image source={{ uri: imageUri(item.portfolio[0].image) }} style={styles.cover} contentFit="cover" /> : null}
               <View style={styles.cardBody}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  {item.verified && <VerifiedBadge small />}
+                <View style={styles.cardTop}>
+                  <Avatar uri={item.avatar} name={item.name} size={52} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.verified && <VerifiedBadge small />}
+                    </View>
+                    {item.membership_active && (
+                      <View style={styles.available} testID={`specialist-available-${item.specialist_id}`}>
+                        <View style={styles.dot} />
+                        <Text style={styles.availableText}>{t("available")}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
                 <Text style={styles.sub} numberOfLines={1}>
                   {tradesLabel(item.categories, t)} · {t("turin")}
@@ -159,6 +170,9 @@ const useStyles = makeStyles((c) => ({
   cardBody: { padding: 16, gap: 4 },
   cardTop: { flexDirection: "row", gap: 12, alignItems: "center" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  available: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
+  availableText: { fontSize: 12, fontWeight: "700", color: c.success },
   name: { fontSize: 17, fontWeight: "700", color: c.onSurface, flexShrink: 1 },
   sub: { fontSize: 13, color: c.muted },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6 },

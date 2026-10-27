@@ -16,7 +16,7 @@ export const setUnauthorizedHandler = (fn: (() => void) | null) => {
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     method: opts.method ?? (opts.body ? "POST" : "GET"),
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { "Content-Type": "application/json", "X-BeHappy-Client": "app", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (res.status === 401 && token) onUnauthorized?.();
@@ -38,7 +38,7 @@ export function imageUri(p?: string | null): string | undefined {
 
 export async function uploadImage(uri: string, mimeType?: string | null): Promise<string> {
   const res = await uploadForm(`${API}/upload`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: { "X-BeHappy-Client": "app", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     files: { file: { uri, name: "photo.jpg", mimeType: mimeType ?? "image/jpeg" } },
   });
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);

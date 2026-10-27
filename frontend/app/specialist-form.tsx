@@ -13,7 +13,7 @@ import { CATEGORIES, SUBTRADES, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Button, SectionTitle, VerifiedBadge } from "@/src/ui";
+import { Avatar, Button, SectionTitle, VerifiedBadge } from "@/src/ui";
 
 async function pick(): Promise<ImagePicker.ImagePickerAsset | null> {
   const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6 });
@@ -38,6 +38,7 @@ export default function SpecialistForm() {
   const [caption, setCaption] = useState("");
   const [docNum, setDocNum] = useState("");
   const [docImg, setDocImg] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
 
   useEffect(() => {
     const s = me.data;
@@ -45,6 +46,7 @@ export default function SpecialistForm() {
       setF({ name: s.name, bio: s.bio || "", phone: s.phone || "", whatsapp: s.whatsapp || "" });
       setCats(s.categories || []);
       setSubs(s.subtrades || []);
+      setAvatar(s.avatar || null);
     }
   }, [me.data]);
 
@@ -67,9 +69,10 @@ export default function SpecialistForm() {
   const save = async () => {
     if (!f.name.trim() || !f.phone.trim()) return toast(t("required"), "error");
     if (!cats.length) return toast(t("choose_trades"), "error");
+    if (!avatar) return toast(t("profile_photo_req"), "error");
     setSaving(true);
     try {
-      await api("/specialists", { body: { ...f, categories: cats, subtrades: subs } });
+      await api("/specialists", { body: { ...f, categories: cats, subtrades: subs, avatar } });
       await refreshUser();
       await me.refetch();
       queryClient.invalidateQueries({ queryKey: ["specialists"] });
@@ -125,6 +128,31 @@ export default function SpecialistForm() {
         <Text style={styles.title}>{t("form_title")}</Text>
       </View>
       <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: insets.bottom + 32 }} keyboardShouldPersistTaps="handled">
+        <View style={styles.avatarRow}>
+          <Pressable
+            testID="specialist-avatar-button"
+            onPress={async () => {
+              const p = await upload("avatar");
+              if (p) setAvatar(p);
+            }}
+          >
+            {uploading === "avatar" ? (
+              <View style={styles.avatarEmpty}>
+                <ActivityIndicator color={colors.brandPrimary} />
+              </View>
+            ) : avatar ? (
+              <Avatar uri={avatar} name={f.name} size={88} />
+            ) : (
+              <View style={styles.avatarEmpty}>
+                <Ionicons name="camera" size={30} color={colors.brandPrimary} />
+              </View>
+            )}
+          </Pressable>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.label}>{t("profile_photo")} *</Text>
+            <Text style={styles.hint}>{avatar ? t("change_photo") : t("profile_photo_req")}</Text>
+          </View>
+        </View>
         {field("name", t("name"))}
         <Text style={styles.label}>{t("trades")} *</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ flexGrow: 0 }}>
@@ -172,9 +200,15 @@ export default function SpecialistForm() {
             )}
             <View style={{ marginTop: 24, gap: 12 }}>
               <SectionTitle>{t("portfolio")}</SectionTitle>
-              {!s.portfolio?.length && <Text style={styles.hint}>{t("need_photos")}</Text>}
-              <TextInput testID="portfolio-caption-input" style={styles.input} maxLength={120} placeholder={t("caption_req")} placeholderTextColor={colors.muted} value={caption} onChangeText={setCaption} />
-              <Button variant="secondary" icon="add" title={t("add_work")} loading={uploading === "work"} onPress={addWork} testID="add-portfolio-button" />
+              {s.membership_active ? (
+                <>
+                  {!s.portfolio?.length && <Text style={styles.hint}>{t("need_photos")}</Text>}
+                  <TextInput testID="portfolio-caption-input" style={styles.input} maxLength={120} placeholder={t("caption_req")} placeholderTextColor={colors.muted} value={caption} onChangeText={setCaption} />
+                  <Button variant="secondary" icon="add" title={t("add_work")} loading={uploading === "work"} onPress={addWork} testID="add-portfolio-button" />
+                </>
+              ) : (
+                <Text style={styles.hint}>{t("portfolio_needs_membership")}</Text>
+              )}
               <View style={styles.grid}>
                 {s.portfolio?.map((p: any) => (
                   <View key={p.item_id} style={styles.gridItem}>
@@ -238,6 +272,7 @@ const useStyles = makeStyles((c) => ({
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 20, fontWeight: "800", color: c.onSurface },
   avatarRow: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 8 },
+  avatarEmpty: { width: 88, height: 88, borderRadius: 44, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.brandPrimary, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   label: { fontSize: 13, fontWeight: "600", color: c.muted, marginTop: 4 },
   input: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: c.onSurface },
   chip: { height: 36, flexShrink: 0, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, justifyContent: "center" },

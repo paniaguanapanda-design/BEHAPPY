@@ -10,7 +10,7 @@ import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Avatar } from "@/src/ui";
+import { Avatar, Button } from "@/src/ui";
 import { timeLabel } from "@/src/time";
 import { queryClient } from "@/src/query-client";
 import { ReportSheet } from "@/src/ReportSheet";
@@ -95,6 +95,12 @@ export default function Chat() {
             );
           }}
         />
+        {!iAmClient && c?.specialist_can_reply === false ? (
+          <View style={[styles.lockBar, { paddingBottom: insets.bottom + 12 }]} testID="chat-membership-required">
+            <Text style={styles.lockText}>{t("reply_needs_membership")}</Text>
+            <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="chat-activate-membership-button" />
+          </View>
+        ) : (
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
           <TextInput
             testID="chat-message-input"
@@ -109,6 +115,7 @@ export default function Chat() {
             <Ionicons name="arrow-up" size={22} color={colors.onBrandPrimary} />
           </Pressable>
         </View>
+        )}
       </KeyboardAvoidingView>
       <ReportSheet
         visible={!!report}
@@ -138,6 +145,8 @@ const useStyles = makeStyles((c) => ({
   reqHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   reqTitle: { fontWeight: "800", color: c.onBrandSecondary, fontSize: 13 },
   reqText: { color: c.onBrandSecondary, fontSize: 14, lineHeight: 20 },
+  lockBar: { gap: 10, paddingHorizontal: 16, paddingTop: 12, backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border },
+  lockText: { fontSize: 14, color: c.onSurfaceTertiary, lineHeight: 20 },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 12, paddingTop: 8, backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border },
   input: { flex: 1, minHeight: 44, maxHeight: 120, borderRadius: 22, backgroundColor: c.surfaceTertiary, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: c.onSurface },
   send: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },

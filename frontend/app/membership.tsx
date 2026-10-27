@@ -113,7 +113,7 @@ export default function MembershipScreen() {
                 </Text>
                 {m?.active && m.expires_at ? (
                   <Text style={styles.statusSub}>
-                    {m.source === "preregistro" ? t("mb_free_month") : t(m.plan === "yearly" ? "yearly" : "monthly")} · {t("active_until")} {fmtDate(m.expires_at, lang)}
+                    {(m.source === "preregistro" || m.source === "registro_web") ? t("mb_free_month") : t(m.plan === "yearly" ? "yearly" : "monthly")} · {t("active_until")} {fmtDate(m.expires_at, lang)}
                   </Text>
                 ) : null}
               </View>
