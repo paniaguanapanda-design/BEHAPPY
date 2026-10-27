@@ -187,7 +187,9 @@ _hits = defaultdict(deque)
 
 
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    h = request.headers
+    ip = h.get("cf-connecting-ip") or (h.get("x-forwarded-for") or "").split(",")[0].strip()
+    return ip or (request.client.host if request.client else "unknown")
 
 
 def rate_limit(key: str, limit: int, window_s: int) -> None:
@@ -202,6 +204,10 @@ def rate_limit(key: str, limit: int, window_s: int) -> None:
         raise HTTPException(429, "Demasiadas peticiones, espera un momento e intentalo de nuevo")
     q.append(t)
     
+def own_upload(path: str, user: dict) -> bool:
+    return isinstance(path, str) and ".." not in path and path.startswith(f"{APP_NAME}/uploads/{user['user_id']}/")
+
+
 # ---------------- Auth ----------------
 def public_user(u: dict) -> dict:
     return {k: u.get(k) for k in ["user_id", "email", "name", "picture", "role", "specialist_id", "created_at"]}
@@ -243,14 +249,14 @@ async def current_user(request: Request) -> dict:
 
 
 class RegisterIn(BaseModel):
-    email: str
-    password: str
-    name: str
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
+    name: str = Field(max_length=100)
 
 
 class LoginIn(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
 
 
 class SessionIn(BaseModel):
@@ -336,7 +342,7 @@ async def logout(request: Request):
 
 
 class DeleteAccountIn(BaseModel):
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, max_length=128)
 
 
 @api.post("/auth/delete-account")
@@ -379,6 +385,7 @@ async def delete_account(body: DeleteAccountIn, request: Request):
 @api.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...)):
     user = await current_user(request)
+    rate_limit(f"upload:{user['user_id']}", 30, 60)
     max_bytes = 10 * 1024 * 1024
     data = await file.read(max_bytes + 1)
     if len(data) > max_bytes:
@@ -576,22 +583,22 @@ async def get_diagnosis(diagnosis_id: str, request: Request, lang: Optional[str]
 
 # ---------------- Specialists ----------------
 class SpecialistIn(BaseModel):
-    name: str
-    categories: List[str]
-    subtrades: List[str] = []
+    name: str = Field(max_length=100)
+    categories: List[str] = Field(max_length=10)
+    subtrades: List[str] = Field(default=[], max_length=30)
     bio: str = Field("", max_length=300)
-    phone: str
-    whatsapp: Optional[str] = None
+    phone: str = Field(max_length=30)
+    whatsapp: Optional[str] = Field(default=None, max_length=30)
 
 
 class PortfolioIn(BaseModel):
-    image: str
-    caption: str = ""
+    image: str = Field(max_length=300)
+    caption: str = Field(default="", max_length=200)
 
 
 class VerifyIn(BaseModel):
-    document_image: str
-    document_number: str
+    document_image: str = Field(max_length=300)
+    document_number: str = Field(max_length=40)
 
 
 class ReviewIn(BaseModel):
@@ -699,6 +706,8 @@ async def add_portfolio(body: PortfolioIn, request: Request):
     s = await db.specialists.find_one({"user_id": user["user_id"]})
     if not s:
         raise HTTPException(404, "Not a specialist")
+    if not own_upload(body.image, user):
+        raise HTTPException(400, "Invalid image")
     if not body.caption.strip():
         raise HTTPException(400, "Describe what was done")
     caps = await caption_both(body.caption)
@@ -721,6 +730,8 @@ async def verify(body: VerifyIn, request: Request):
     s = await db.specialists.find_one({"user_id": user["user_id"]})
     if not s:
         raise HTTPException(404, "Not a specialist")
+    if not own_upload(body.document_image, user):
+        raise HTTPException(400, "Invalid document image")
     if len(body.document_number.strip()) < 5:
         raise HTTPException(400, "Invalid document number")
     # MVP: identity document + number submitted => verified automatically
@@ -902,7 +913,7 @@ async def list_blocks(request: Request):
 
 # ---------------- Chat ----------------
 class MessageIn(BaseModel):
-    text: str
+    text: str = Field(max_length=2000)
 
 
 class ConversationIn(BaseModel):
@@ -996,6 +1007,7 @@ async def list_messages(cid: str, request: Request):
 @api.post("/conversations/{cid}/messages")
 async def send_message(cid: str, body: MessageIn, request: Request):
     user = await current_user(request)
+    rate_limit(f"msg:{user['user_id']}", 30, 60)
     conv = await get_conv_for(cid, user)
     other_id = [p for p in conv["participants"] if p != user["user_id"]][0]
     if await blocked_between(user["user_id"], other_id):
@@ -1008,9 +1020,9 @@ async def send_message(cid: str, body: MessageIn, request: Request):
 # ---------------- Service requests ----------------
 class RequestIn(BaseModel):
     specialist_id: str
-    description: str
-    address: str = ""
-    preferred_date: str = ""
+    description: str = Field(max_length=2000)
+    address: str = Field(default="", max_length=300)
+    preferred_date: str = Field(default="", max_length=50)
     diagnosis_id: Optional[str] = None
 
 
@@ -1021,6 +1033,7 @@ class RequestStatusIn(BaseModel):
 @api.post("/requests")
 async def create_request(body: RequestIn, request: Request):
     user = await current_user(request)
+    rate_limit(f"req:{user['user_id']}", 10, 3600)
     spec = await db.specialists.find_one({"specialist_id": body.specialist_id}, {"_id": 0})
     if not spec:
         raise HTTPException(404, "Specialist not found")
@@ -1083,9 +1096,9 @@ async def update_request(rid: str, body: RequestStatusIn, request: Request):
 
 # ---------------- Quotes (ofertas) ----------------
 class QuoteIn(BaseModel):
-    price: float = Field(gt=0)
-    description: str
-    estimated_time: str = ""
+    price: float = Field(gt=0, lt=1_000_000)
+    description: str = Field(max_length=1000)
+    estimated_time: str = Field(default="", max_length=50)
 
 
 class QuoteStatusIn(BaseModel):
