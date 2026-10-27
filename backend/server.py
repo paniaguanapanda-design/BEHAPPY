@@ -293,6 +293,7 @@ async def login(body: LoginIn, request: Request):
     if not user or not user.get("password_hash") or not await run_in_threadpool(bcrypt.checkpw, body.password.encode(), user["password_hash"].encode()):
         raise HTTPException(401, "Invalid email or password")
     await apply_prereg(user)
+    await start_web_promo(user, request)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
 
@@ -334,11 +335,14 @@ async def google_login(body: GoogleLoginIn, request: Request):
     except Exception as e:
         logger.warning("perfil desde pre-registro no creado para %s: %s", user["user_id"], e)
     await apply_prereg(user)
+    await start_web_promo(user, request)
     return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
 
 @api.get("/auth/me")
 async def me(request: Request):
-    return public_user(await current_user(request))
+    user = await current_user(request)
+    await start_web_promo(user, request)
+    return public_user(user)
 
 
 @api.post("/auth/logout")
@@ -426,7 +430,7 @@ async def get_file(path: str, request: Request, token: Optional[str] = Query(Non
     if not rec:
         raise HTTPException(404, "File not found")
     if rec.get("owner_id") != user["user_id"]:
-        in_portfolio = await db.specialists.find_one({"portfolio.image": path}, {"_id": 1})
+        in_portfolio = await db.specialists.find_one({"$or": [{"portfolio.image": path}, {"avatar": path}]}, {"_id": 1})
         if not in_portfolio:
             raise HTTPException(404, "File not found")
     data, ct = await run_in_threadpool(get_object, path)
@@ -597,6 +601,7 @@ class SpecialistIn(BaseModel):
     bio: str = Field("", max_length=300)
     phone: str = Field(max_length=30)
     whatsapp: Optional[str] = Field(default=None, max_length=30)
+    avatar: Optional[str] = Field(default=None, max_length=300)  # foto de perfil (obligatoria)
 
 
 class PortfolioIn(BaseModel):
@@ -628,9 +633,12 @@ async def specialist_out(s: dict) -> dict:
     return s
 
 
+MEMBERSHIP_REQUIRED = "Necesitas la membresía activa para esto"
+
+
 async def require_active_specialist(spec: dict):
     if not membership_active(spec):
-        raise HTTPException(403, "Specialist membership inactive")
+        raise HTTPException(403, MEMBERSHIP_REQUIRED)
 
 
 @api.get("/categories")
@@ -652,6 +660,13 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
     data["bio"] = data["bio"].strip()
     data["whatsapp"] = data.get("whatsapp") or data["phone"]
     existing = await db.specialists.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if data.get("avatar"):
+        if data["avatar"] != (existing or {}).get("avatar") and not own_upload(data["avatar"], user):
+            raise HTTPException(400, "Invalid profile photo")
+    elif existing and existing.get("avatar"):
+        data.pop("avatar")  # se mantiene la foto actual
+    else:
+        raise HTTPException(400, "La foto de perfil es obligatoria")
     if existing:
         await db.specialists.update_one({"specialist_id": existing["specialist_id"]}, {"$set": data})
         sid = existing["specialist_id"]
@@ -661,24 +676,30 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
                                          "portfolio": [], "verified": False, "verification_status": "none",
                                          "rating_avg": 0.0, "reviews_count": 0, "created_at": iso(now())})
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "specialist", "specialist_id": sid}})
+        if client_kind(request) == "web" and PROMO_WEB and not user.get("promo_mes_gratis"):
+            # Registrado desde la web: el mes gratis empieza la primera vez que entra en la app
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"promo_mes_gratis": "pendiente"}})
     user["specialist_id"] = sid
     await apply_prereg(user)
+    await start_web_promo(user, request)
     return await specialist_out(await db.specialists.find_one({"specialist_id": sid}, {"_id": 0}))
 
 
 @api.get("/specialists")
 async def list_specialists(request: Request, category: Optional[str] = None, q: Optional[str] = None):
     user = await current_user(request)
-    # Showcase: only members with at least one work photo; no distance sorting, no assignment
-    flt = {"membership_expires_at": {"$gt": iso(now())}, "portfolio.0": {"$exists": True}}
+    # Salen todos los especialistas con foto de perfil; los que tienen membresía activa ("disponibles") primero
+    flt = {"avatar": {"$type": "string"}}
     if category and category != "all":
         flt["categories"] = category
     if q:
         flt["name"] = {"$regex": re.escape(q.strip()), "$options": "i"}
     items = await db.specialists.find(flt, {"_id": 0, "verification_document": 0, "document_number": 0}) \
-        .sort([("verified", -1), ("created_at", 1)]).to_list(200)
+        .sort([("verified", -1), ("created_at", 1)]).to_list(500)
     hidden = await hidden_user_ids(user["user_id"])
-    return [await specialist_out(it) for it in items if it["user_id"] not in hidden]
+    out = [await specialist_out(it) for it in items if it["user_id"] not in hidden]
+    out.sort(key=lambda it: not it["membership_active"])  # orden estable: disponibles primero
+    return out
 
 
 @api.get("/specialists/me")
@@ -716,6 +737,7 @@ async def add_portfolio(body: PortfolioIn, request: Request):
     s = await db.specialists.find_one({"user_id": user["user_id"]})
     if not s:
         raise HTTPException(404, "Not a specialist")
+    await require_active_specialist(s)
     if not own_upload(body.image, user):
         raise HTTPException(400, "Invalid image")
     if not body.caption.strip():
@@ -971,10 +993,7 @@ async def start_conversation(body: ConversationIn, request: Request):
         raise HTTPException(404, "Specialist not found")
     if await blocked_between(user["user_id"], spec["user_id"]):
         raise HTTPException(403, "No puedes contactar a este usuario")
-    existing = await db.conversations.find_one({"client_id": user["user_id"], "specialist_id": spec["specialist_id"]}, {"_id": 0})
-    if existing:
-        return existing
-    await require_active_specialist(spec)
+    # Cualquier cliente puede escribir; el especialista necesita membresía para responder
     return await get_or_create_conversation(user, spec)
 
 
@@ -996,7 +1015,12 @@ async def get_conv_for(cid: str, user: dict) -> dict:
 @api.get("/conversations/{cid}")
 async def get_conversation(cid: str, request: Request):
     user = await current_user(request)
-    return await get_conv_for(cid, user)
+    conv = await get_conv_for(cid, user)
+    spec = await db.specialists.find_one({"specialist_id": conv["specialist_id"]}, {"_id": 0, "membership_expires_at": 1,
+                                                                                     "avatar": 1}) or {}
+    conv["specialist_can_reply"] = membership_active(spec)
+    conv["specialist_avatar"] = spec.get("avatar") or conv.get("specialist_avatar")
+    return conv
 
 
 @api.get("/conversations/{cid}/messages")
@@ -1024,6 +1048,8 @@ async def send_message(cid: str, body: MessageIn, request: Request):
         raise HTTPException(403, "No puedes enviar mensajes a este usuario")
     if not body.text.strip():
         raise HTTPException(400, "Empty message")
+    if user["user_id"] == conv.get("specialist_user_id"):
+        await require_active_specialist(await db.specialists.find_one({"specialist_id": conv["specialist_id"]}, {"_id": 0}) or {})
     return await push_message(conv, user, body.text.strip())
 
 
@@ -1051,7 +1077,6 @@ async def create_request(body: RequestIn, request: Request):
         raise HTTPException(400, "Description required")
     if await blocked_between(user["user_id"], spec["user_id"]):
         raise HTTPException(403, "No puedes contactar a este usuario")
-    await require_active_specialist(spec)
     diag_title = None
     if body.diagnosis_id:
         d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id, "user_id": user["user_id"]}, {"_id": 0, "title_es": 1})
@@ -1186,6 +1211,35 @@ async def membership_payload(user_id: str) -> dict:
     exp = m.get("expires_at")
     return {"active": bool(exp and exp > iso(now())), "plan": m.get("plan"), "source": m.get("source"), "expires_at": exp,
             "plans": {k: v["amount"] for k, v in PLANS.items()}, "currency": "EUR"}
+
+
+# ---------------- Registro desde la web ----------------
+PROMO_WEB = os.environ.get("PROMO_MES_GRATIS_WEB", "true").strip().lower() != "false"
+
+
+def client_kind(request: Request) -> str:
+    """'web' (www.be-happyapp.com), 'app' o '' segun la cabecera que envia cada cliente."""
+    return (request.headers.get("x-behappy-client") or "").strip().lower()
+
+
+async def start_web_promo(user: dict, request: Request) -> None:
+    """Quien se registro como especialista en la web empieza su mes gratis al entrar por primera vez en la app."""
+    try:
+        if client_kind(request) != "app" or not user.get("specialist_id"):
+            return
+        claimed = await db.users.find_one_and_update({"user_id": user["user_id"], "promo_mes_gratis": "pendiente"},
+                                                     {"$set": {"promo_mes_gratis": "aplicada", "promo_aplicada_en": iso(now())}})
+        if not claimed:
+            return
+        current = await db.memberships.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
+        base = now()
+        if current.get("expires_at") and current["expires_at"] > iso(base):
+            base = datetime.fromisoformat(current["expires_at"])
+        await activate_membership(user["user_id"], current.get("plan") or "monthly", "registro_web",
+                                  base + timedelta(days=30))
+        logger.info("Mes gratis de registro web aplicado a %s", user["user_id"])
+    except Exception as e:
+        logger.warning("mes gratis web no aplicado a %s: %s", user.get("user_id"), e)
 
 
 # ---------------- Pre-registro desde la web ----------------

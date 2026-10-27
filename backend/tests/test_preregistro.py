@@ -45,9 +45,11 @@ async def register(api, email):
     return {"Authorization": f"Bearer {r.json()['session_token']}"}
 
 
-async def make_profile(api, headers):
-    r = await api.post("/api/specialists", headers=headers,
-                       json={"name": "Mario Rossi", "categories": ["plumbing"], "phone": "+39 333 1234567"})
+async def make_profile(api, headers, **extra):
+    uid = (await api.get("/api/auth/me", headers=headers)).json()["user_id"]
+    body = {"name": "Mario Rossi", "categories": ["plumbing"], "phone": "+39 333 1234567",
+            "avatar": f"behappy/uploads/{uid}/cara.jpg", **extra}
+    r = await api.post("/api/specialists", headers=headers, json=body)
     assert r.status_code == 200, r.text
     return r.json()
 
