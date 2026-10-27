@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, imageUri } from "@/src/api";
+import { api, imageSource } from "@/src/api";
 import { CATEGORIES, tradesLabel, useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -109,7 +109,7 @@ export default function Specialists() {
               onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: item.specialist_id } })}
               style={({ pressed }) => [styles.card, pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 }]}
             >
-              {item.portfolio?.length ? <Image source={{ uri: imageUri(item.portfolio[0].image) }} style={styles.cover} contentFit="cover" /> : null}
+              {item.portfolio?.length ? <Image source={imageSource(item.portfolio[0].image)} style={styles.cover} contentFit="cover" /> : null}
               <View style={styles.cardBody}>
                 <View style={styles.cardTop}>
                   <Avatar uri={item.avatar} name={item.name} size={52} />

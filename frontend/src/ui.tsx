@@ -2,13 +2,13 @@ import React from "react";
 import { ActivityIndicator, Pressable, PressableProps, StyleProp, Text, View, ViewStyle } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { imageUri } from "@/src/api";
+import { imageSource } from "@/src/api";
 import { makeStyles, useTheme } from "@/src/theme";
 
 export function Avatar({ uri, name, size = 48 }: { uri?: string | null; name?: string; size?: number }) {
   const styles = useStyles();
-  const src = imageUri(uri);
-  if (src) return <Image source={{ uri: src }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" />;
+  const src = imageSource(uri);
+  if (src) return <Image source={src} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" />;
   return (
     <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2 }]}>
       <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{(name || "?").charAt(0).toUpperCase()}</Text>

@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, imageUri } from "@/src/api";
+import { api, imageSource } from "@/src/api";
 import { CATEGORIES, useI18n } from "@/src/i18n";
 import { makeStyles, useTheme } from "@/src/theme";
 import { DifficultyBadge } from "@/src/DifficultyBadge";
@@ -36,7 +36,7 @@ export default function Diagnosis() {
   const steps: { title: string; detail: string }[] = d.difficulty === "expert" ? [] : d.steps || [];
   const isAppliance = d.category === "appliance";
   const canHire = (CATEGORIES as readonly string[]).includes(d.category); // unknown trade: never open specialists
-  const photo = localPhotos[d.diagnosis_id] ?? imageUri(d.image_path);
+  const photo = localPhotos[d.diagnosis_id] ? { uri: localPhotos[d.diagnosis_id] } : imageSource(d.image_path);
   const materials: any[] = d.difficulty === "expert" ? [] : d.materials || [];
   const tools: string[] = d.difficulty === "expert" ? [] : d.tools || [];
   const doneCount = Object.values(done).filter(Boolean).length;
@@ -47,7 +47,7 @@ export default function Diagnosis() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
         <View style={styles.hero}>
           {photo ? (
-            <Image source={{ uri: photo }} style={styles.abs} contentFit="cover" testID="diagnosis-photo" />
+            <Image source={photo} style={styles.abs} contentFit="cover" testID="diagnosis-photo" />
           ) : (
             <View style={[styles.abs, { backgroundColor: colors.surfaceInverse }]} />
           )}
