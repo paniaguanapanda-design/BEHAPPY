@@ -6,6 +6,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useAuth } from "@/src/auth";
+import { api } from "@/src/api";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { Button } from "@/src/ui";
@@ -20,9 +21,11 @@ export default function Login() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { t, lang } = useI18n();
-  const { login, register, loginWithGoogle } = useAuth();
+  const { login, register, loginWithGoogle, resetPassword } = useAuth();
   const toast = useToast();
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [mode, setMode] = useState<"in" | "up" | "forgot" | "reset">("in");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,6 +38,33 @@ export default function Login() {
     try {
       if (mode === "in") await login(email, password);
       else await register(name, email, password);
+    } catch (e: any) {
+      toast(e.message || t("error_generic"), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendCode = async () => {
+    if (!email.trim()) return toast(t("required"), "error");
+    setBusy(true);
+    try {
+      await api("/auth/forgot-password", { body: { email: email.trim(), language: lang } });
+      setMode("reset");
+      toast(t("code_sent"));
+    } catch (e: any) {
+      toast(e.message || t("error_generic"), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changePassword = async () => {
+    if (code.trim().length !== 6 || newPassword.length < 6) return toast(t("required"), "error");
+    setBusy(true);
+    try {
+      await resetPassword(email.trim(), code.trim(), newPassword);
+      toast(t("password_changed"));
     } catch (e: any) {
       toast(e.message || t("error_generic"), "error");
     } finally {
@@ -71,6 +101,59 @@ export default function Login() {
           </View>
         </View>
 
+        {mode === "forgot" || mode === "reset" ? (
+          <View style={styles.form} testID="forgot-password-form">
+            <Text style={styles.formTitle}>{t("forgot_title")}</Text>
+            <Text style={styles.formText}>{mode === "forgot" ? t("forgot_text") : t("code_sent")}</Text>
+            <TextInput
+              testID="forgot-email-input"
+              style={styles.input}
+              placeholder={t("email")}
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              editable={mode === "forgot"}
+              value={email}
+              onChangeText={setEmail}
+            />
+            {mode === "forgot" ? (
+              <Button testID="send-code-button" title={t("send_code")} onPress={sendCode} loading={busy} />
+            ) : (
+              <>
+                <TextInput
+                  testID="reset-code-input"
+                  style={[styles.input, styles.codeInput]}
+                  placeholder={t("code")}
+                  placeholderTextColor={colors.muted}
+                  keyboardType="number-pad"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChangeText={(v) => setCode(v.replace(/\D/g, ""))}
+                />
+                <TextInput
+                  testID="reset-new-password-input"
+                  style={styles.input}
+                  placeholder={t("new_password")}
+                  placeholderTextColor={colors.muted}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  onSubmitEditing={changePassword}
+                />
+                <Button testID="change-password-button" title={t("change_password")} onPress={changePassword} loading={busy} />
+                <Pressable testID="resend-code-button" onPress={sendCode} disabled={busy} style={styles.switch}>
+                  <Text style={styles.switchText}>{t("resend_code")}</Text>
+                </Pressable>
+              </>
+            )}
+            <Pressable testID="back-to-login" onPress={() => setMode("in")} style={styles.switch}>
+              <Text style={styles.switchText}>{t("back_to_login")}</Text>
+            </Pressable>
+          </View>
+        ) : (
         <View style={styles.form}>
           {mode === "up" && (
             <TextInput testID="register-name-input" style={styles.input} placeholder={t("name")} placeholderTextColor={colors.muted} value={name} onChangeText={setName} />
@@ -95,6 +178,11 @@ export default function Login() {
             onChangeText={setPassword}
             onSubmitEditing={submit}
           />
+          {mode === "in" && (
+            <Pressable testID="forgot-password-link" onPress={() => setMode("forgot")} style={styles.forgot} hitSlop={8}>
+              <Text style={styles.forgotText}>{t("forgot_password")}</Text>
+            </Pressable>
+          )}
           <Button testID="login-submit-button" title={mode === "in" ? t("sign_in") : t("sign_up")} onPress={submit} loading={busy} />
           <View style={styles.orRow}>
             <View style={styles.line} />
@@ -119,6 +207,7 @@ export default function Login() {
             <LangToggle />
           </View>
         </View>
+        )}
       </KeyboardAwareScrollView>
     </View>
   );
@@ -154,5 +243,10 @@ const useStyles = makeStyles((c) => ({
   legalRow: { flexDirection: "row", justifyContent: "center", marginTop: 4 },
   legalText: { color: c.muted, fontSize: 13, textDecorationLine: "underline" },
   switch: { alignItems: "center", paddingVertical: 12, minHeight: 44 },
+  forgot: { alignSelf: "flex-end", minHeight: 32, justifyContent: "center" },
+  forgotText: { color: c.brandTertiary, fontWeight: "600", fontSize: 13 },
+  formTitle: { fontSize: 22, fontWeight: "800", color: c.onSurface },
+  formText: { fontSize: 14, lineHeight: 20, color: c.muted },
+  codeInput: { fontSize: 22, letterSpacing: 6, textAlign: "center" },
   switchText: { color: c.brandTertiary, fontWeight: "600", fontSize: 14 },
 }));

@@ -21,6 +21,7 @@ type Ctx = {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -96,6 +97,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }, [applySession]);
 
+  // Cambia la contraseña con el código recibido por email y deja la sesión iniciada.
+  const resetPassword = useCallback(
+    async (email: string, code: string, newPassword: string) => {
+      await applySession(await api("/auth/reset-password", { body: { email, code, new_password: newPassword } }));
+    },
+    [applySession],
+  );
+
   const logout = useCallback(async () => {
     try {
       await api("/auth/logout", { method: "POST" });
@@ -114,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, resetPassword, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
