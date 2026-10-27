@@ -410,6 +410,134 @@ async def logout_all(request: Request):
     return {"ok": True}
 
 
+# ---------------- Recuperar contrasena (codigo de 6 digitos por email) ----------------
+RESET_MINUTES = 15
+RESET_MAX_ATTEMPTS = 5
+
+RESET_EMAIL = {
+    "es": {"subject": "Tu código para cambiar la contraseña de Be Happy",
+           "hello": "Hola {name}:",
+           "body": "Tu código para crear una contraseña nueva es:",
+           "expires": "Caduca en {m} minutos. Si no lo has pedido tú, ignora este correo: tu contraseña no cambia.",
+           "google_subject": "Tu cuenta de Be Happy usa Google",
+           "google_body": "Has pedido cambiar la contraseña, pero tu cuenta no tiene contraseña: entras con el botón «Continuar con Google»."},
+    "it": {"subject": "Il tuo codice per cambiare la password di Be Happy",
+           "hello": "Ciao {name},",
+           "body": "Il tuo codice per creare una nuova password è:",
+           "expires": "Scade tra {m} minuti. Se non l'hai chiesto tu, ignora questa email: la password non cambia.",
+           "google_subject": "Il tuo account Be Happy usa Google",
+           "google_body": "Hai chiesto di cambiare la password, ma il tuo account non ne ha una: entri con il pulsante «Continua con Google»."},
+}
+
+
+def email_configured() -> bool:
+    return bool(os.environ.get("RESEND_API_KEY") and os.environ.get("EMAIL_FROM"))
+
+
+async def send_email(to: str, subject: str, text: str, html: str) -> bool:
+    """Envia un email con Resend (https://resend.com). Devuelve False si falla."""
+    if not email_configured():
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            r = await hc.post("https://api.resend.com/emails",
+                              headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}"},
+                              json={"from": os.environ["EMAIL_FROM"], "to": [to], "subject": subject,
+                                    "text": text, "html": html})
+        if r.status_code >= 300:
+            logger.warning("email no enviado: %s %s", r.status_code, r.text[:200])
+        return r.status_code < 300
+    except Exception as e:
+        logger.warning("email no enviado: %s", e)
+        return False
+
+
+def _reset_hash(user_id: str, code: str) -> str:
+    import hmac
+    import hashlib
+    return hmac.new(JWT_SECRET.encode(), f"{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
+
+
+def _esc(v: str) -> str:
+    import html
+    return html.escape(v or "")
+
+
+class ForgotIn(BaseModel):
+    email: str = Field(max_length=254)
+    language: str = Field(default="es", max_length=5)
+
+
+class ResetIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+    new_password: str = Field(max_length=128)
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotIn, request: Request):
+    """Siempre responde lo mismo, exista o no la cuenta, para no revelar que emails estan registrados."""
+    import secrets
+    email = body.email.strip().lower()
+    rate_limit(f"forgot-ip:{client_ip(request)}", 10, 3600)
+    rate_limit(f"forgot-mail:{email}", 3, 3600)
+    if not email_configured():
+        raise HTTPException(503, "La recuperación de contraseña no está disponible ahora")
+    lang = "it" if body.language == "it" else "es"
+    tx = RESET_EMAIL[lang]
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        return {"ok": True}
+    name = _esc(user.get("name") or "")
+    if not user.get("password_hash"):
+        text = f"{tx['hello'].format(name=user.get('name') or '')}\n\n{tx['google_body']}"
+        await send_email(email, tx["google_subject"], text,
+                         f"<p>{tx['hello'].format(name=name)}</p><p>{tx['google_body']}</p>")
+        return {"ok": True}
+    code = f"{secrets.randbelow(10**6):06d}"
+    await db.password_resets.update_one({"user_id": user["user_id"]}, {"$set": {
+        "user_id": user["user_id"], "email": email, "code_hash": _reset_hash(user["user_id"], code), "attempts": 0,
+        "created_at": now(), "expires_at": now() + timedelta(minutes=RESET_MINUTES)}}, upsert=True)
+    expires = tx["expires"].format(m=RESET_MINUTES)
+    text = f"{tx['hello'].format(name=user.get('name') or '')}\n\n{tx['body']} {code}\n\n{expires}"
+    html = (f"<div style=\"font-family:Arial,sans-serif;max-width:480px;color:#0a1628\">"
+            f"<p>{tx['hello'].format(name=name)}</p><p>{tx['body']}</p>"
+            f"<p style=\"font-size:32px;font-weight:bold;letter-spacing:6px;margin:24px 0\">{code}</p>"
+            f"<p style=\"color:#64748b;font-size:13px\">{expires}</p></div>")
+    if not await send_email(email, tx["subject"], text, html):
+        raise HTTPException(503, "No se pudo enviar el email, inténtalo más tarde")
+    return {"ok": True}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetIn, request: Request):
+    email = body.email.strip().lower()
+    rate_limit(f"reset-ip:{client_ip(request)}", 20, 3600)
+    bad = HTTPException(400, "Código incorrecto o caducado")
+    if not (6 <= len(body.new_password) <= 128):
+        raise HTTPException(400, "Password must be at least 6 characters")
+    rec = await db.password_resets.find_one({"email": email}, {"_id": 0})
+    if not rec or rec["expires_at"].replace(tzinfo=rec["expires_at"].tzinfo or timezone.utc) < now():
+        raise bad
+    if rec.get("attempts", 0) >= RESET_MAX_ATTEMPTS:
+        await db.password_resets.delete_one({"user_id": rec["user_id"]})
+        raise bad
+    import hmac
+    if not hmac.compare_digest(rec["code_hash"], _reset_hash(rec["user_id"], body.code.strip())):
+        await db.password_resets.update_one({"user_id": rec["user_id"]}, {"$inc": {"attempts": 1}})
+        raise bad
+    await db.password_resets.delete_one({"user_id": rec["user_id"]})
+    pw_hash = (await run_in_threadpool(bcrypt.hashpw, body.new_password.encode(), bcrypt.gensalt())).decode()
+    await db.users.update_one({"user_id": rec["user_id"]}, {"$set": {"password_hash": pw_hash,
+                                                                      "password_changed_at": iso(now())}})
+    # Cambiar la contrasena cierra todas las sesiones abiertas (por si alguien mas tenia acceso)
+    await db.auth_sessions.delete_many({"user_id": rec["user_id"]})
+    await db.user_sessions.delete_many({"user_id": rec["user_id"]})
+    user = await db.users.find_one({"user_id": rec["user_id"]}, {"_id": 0})
+    await start_web_promo(user, request)
+    return {"session_token": await make_jwt(user["user_id"]), "user": public_user(user)}
+
+
 class DeleteAccountIn(BaseModel):
     password: Optional[str] = Field(default=None, max_length=128)
 
@@ -1412,6 +1540,9 @@ async def startup():
     await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
     await db.auth_sessions.create_index("jti", unique=True)
+    await db.password_resets.create_index("user_id", unique=True)
+    await db.password_resets.create_index("email")
+    await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
     await db.auth_sessions.create_index("user_id")
     await db.auth_sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.specialists.update_many({"document_number": {"$exists": True}}, {"$unset": {"document_number": ""}})
