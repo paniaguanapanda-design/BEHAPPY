@@ -347,7 +347,7 @@ async def delete_account(body: DeleteAccountIn, request: Request):
     if full and full.get("password_hash"):
         ok = body.password and await run_in_threadpool(bcrypt.checkpw, body.password.encode(), full["password_hash"].encode())
         if not ok:
-            raise HTTPException(401, "Contrasena incorrecta")
+            raise HTTPException(403, "Contrasena incorrecta")
     specs = await db.specialists.find({"user_id": uid}, {"_id": 0, "specialist_id": 1}).to_list(10)
     sids = [s["specialist_id"] for s in specs]
     convs = await db.conversations.find({"participants": uid}, {"_id": 0, "conversation_id": 1}).to_list(10000)
@@ -368,6 +368,7 @@ async def delete_account(body: DeleteAccountIn, request: Request):
             q = {"$or": [{"user_id": uid}, {"client_id": uid}, {"specialist_user_id": uid}, {"sender_id": uid},
                          {"owner_id": uid}, {"specialist_id": {"$in": sids}}, {"conversation_id": {"$in": cids}}]}
         await db[name].delete_many(q)
+    await db.blocks.delete_many({"blocked_id": uid})
     for sid in {r["specialist_id"] for r in reviewed} - set(sids):
         rest = await db.reviews.find({"specialist_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
         avg = round(sum(r["rating"] for r in rest) / len(rest), 1) if rest else None
@@ -650,7 +651,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
 
 @api.get("/specialists")
 async def list_specialists(request: Request, category: Optional[str] = None, q: Optional[str] = None):
-    await current_user(request)
+    user = await current_user(request)
     # Showcase: only members with at least one work photo; no distance sorting, no assignment
     flt = {"membership_expires_at": {"$gt": iso(now())}, "portfolio.0": {"$exists": True}}
     if category and category != "all":
@@ -659,7 +660,8 @@ async def list_specialists(request: Request, category: Optional[str] = None, q: 
         flt["name"] = {"$regex": re.escape(q.strip()), "$options": "i"}
     items = await db.specialists.find(flt, {"_id": 0, "verification_document": 0, "document_number": 0}) \
         .sort([("verified", -1), ("created_at", 1)]).to_list(200)
-    return [await specialist_out(it) for it in items]
+    hidden = await hidden_user_ids(user["user_id"])
+    return [await specialist_out(it) for it in items if it["user_id"] not in hidden]
 
 
 @api.get("/specialists/me")
@@ -731,8 +733,10 @@ async def verify(body: VerifyIn, request: Request):
 
 @api.get("/specialists/{sid}/reviews")
 async def list_reviews(sid: str, request: Request):
-    await current_user(request)
-    return await db.reviews.find({"specialist_id": sid}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    user = await current_user(request)
+    hidden = await hidden_user_ids(user["user_id"])
+    items = await db.reviews.find({"specialist_id": sid}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return [r for r in items if r.get("user_id") not in hidden]
 
 
 @api.post("/specialists/{sid}/reviews")
@@ -762,6 +766,71 @@ async def add_review(sid: str, body: ReviewIn, request: Request):
     avg = round(sum(r["rating"] for r in all_r) / len(all_r), 1)
     await db.specialists.update_one({"specialist_id": sid}, {"$set": {"rating_avg": avg, "reviews_count": len(all_r)}})
     return review
+
+
+# ---------------- Moderation: reports and blocks ----------------
+REPORT_TARGETS = {"message", "review", "portfolio", "specialist", "user"}
+REPORT_REASONS = {"spam", "inappropriate", "harassment", "fraud", "other"}
+
+
+class ReportIn(BaseModel):
+    target_type: str = Field(max_length=20)
+    target_id: str = Field(max_length=100)
+    reason: str = Field(max_length=30)
+    details: str = Field(default="", max_length=1000)
+
+
+class BlockIn(BaseModel):
+    user_id: str = Field(max_length=100)
+
+
+async def blocked_between(a: str, b: str) -> bool:
+    return bool(await db.blocks.find_one({"$or": [{"user_id": a, "blocked_id": b}, {"user_id": b, "blocked_id": a}]}))
+
+
+async def hidden_user_ids(uid: str) -> set:
+    ids = set()
+    async for b in db.blocks.find({"$or": [{"user_id": uid}, {"blocked_id": uid}]}, {"_id": 0}):
+        ids.add(b["blocked_id"] if b["user_id"] == uid else b["user_id"])
+    return ids
+
+
+@api.post("/reports")
+async def create_report(body: ReportIn, request: Request):
+    user = await current_user(request)
+    rate_limit(f"report:{user['user_id']}", 20, 3600)
+    if body.target_type not in REPORT_TARGETS or body.reason not in REPORT_REASONS:
+        raise HTTPException(400, "Invalid report")
+    await db.reports.insert_one({"report_id": new_id("rep"), "user_id": user["user_id"], "target_type": body.target_type,
+                                 "target_id": body.target_id, "reason": body.reason, "details": body.details.strip(),
+                                 "status": "open", "created_at": iso(now())})
+    logger.warning("REPORT %s %s reason=%s by=%s", body.target_type, body.target_id, body.reason, user["user_id"])
+    return {"ok": True}
+
+
+@api.post("/blocks")
+async def block_user(body: BlockIn, request: Request):
+    user = await current_user(request)
+    if body.user_id == user["user_id"]:
+        raise HTTPException(400, "Invalid user")
+    if not await db.users.find_one({"user_id": body.user_id}, {"_id": 1}):
+        raise HTTPException(404, "User not found")
+    await db.blocks.update_one({"user_id": user["user_id"], "blocked_id": body.user_id},
+                               {"$set": {"created_at": iso(now())}}, upsert=True)
+    return {"ok": True}
+
+
+@api.delete("/blocks/{uid}")
+async def unblock_user(uid: str, request: Request):
+    user = await current_user(request)
+    await db.blocks.delete_one({"user_id": user["user_id"], "blocked_id": uid})
+    return {"ok": True}
+
+
+@api.get("/blocks")
+async def list_blocks(request: Request):
+    user = await current_user(request)
+    return await db.blocks.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(500)
 
 
 # ---------------- Chat ----------------
@@ -812,6 +881,8 @@ async def start_conversation(body: ConversationIn, request: Request):
     spec = await db.specialists.find_one({"specialist_id": body.specialist_id}, {"_id": 0})
     if not spec:
         raise HTTPException(404, "Specialist not found")
+    if await blocked_between(user["user_id"], spec["user_id"]):
+        raise HTTPException(403, "No puedes contactar a este usuario")
     existing = await db.conversations.find_one({"client_id": user["user_id"], "specialist_id": spec["specialist_id"]}, {"_id": 0})
     if existing:
         return existing
@@ -822,7 +893,9 @@ async def start_conversation(body: ConversationIn, request: Request):
 @api.get("/conversations")
 async def list_conversations(request: Request):
     user = await current_user(request)
-    return await db.conversations.find({"participants": user["user_id"]}, {"_id": 0}).sort("updated_at", -1).to_list(100)
+    hidden = await hidden_user_ids(user["user_id"])
+    convs = await db.conversations.find({"participants": user["user_id"]}, {"_id": 0}).sort("updated_at", -1).to_list(100)
+    return [c for c in convs if not any(p in hidden for p in c["participants"] if p != user["user_id"])]
 
 
 async def get_conv_for(cid: str, user: dict) -> dict:
@@ -857,6 +930,9 @@ async def list_messages(cid: str, request: Request):
 async def send_message(cid: str, body: MessageIn, request: Request):
     user = await current_user(request)
     conv = await get_conv_for(cid, user)
+    other_id = [p for p in conv["participants"] if p != user["user_id"]][0]
+    if await blocked_between(user["user_id"], other_id):
+        raise HTTPException(403, "No puedes enviar mensajes a este usuario")
     if not body.text.strip():
         raise HTTPException(400, "Empty message")
     return await push_message(conv, user, body.text.strip())
@@ -883,6 +959,8 @@ async def create_request(body: RequestIn, request: Request):
         raise HTTPException(404, "Specialist not found")
     if not body.description.strip():
         raise HTTPException(400, "Description required")
+    if await blocked_between(user["user_id"], spec["user_id"]):
+        raise HTTPException(403, "No puedes contactar a este usuario")
     await require_active_specialist(spec)
     diag_title = None
     if body.diagnosis_id:

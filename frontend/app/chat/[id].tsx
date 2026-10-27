@@ -13,6 +13,7 @@ import { makeStyles, useTheme } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 import { timeLabel } from "@/src/time";
 import { queryClient } from "@/src/query-client";
+import { ReportSheet } from "@/src/ReportSheet";
 
 export default function Chat() {
   const styles = useStyles();
@@ -28,11 +29,13 @@ export default function Chat() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const list = useRef<FlatList>(null);
+  const [report, setReport] = useState<null | { type: string; id: string }>(null);
 
   const c = conv.data;
   const iAmClient = c?.client_id === user?.user_id;
   const otherName = c ? (iAmClient ? c.specialist_name : c.client_name) : "";
   const otherPic = c ? (iAmClient ? c.specialist_avatar : c.client_picture) : null;
+  const otherUserId = c ? (iAmClient ? c.specialist_user_id : c.client_id) : "";
 
   useEffect(() => {
     setTimeout(() => list.current?.scrollToEnd({ animated: true }), 100);
@@ -71,6 +74,9 @@ export default function Chat() {
             {otherName}
           </Text>
         </Pressable>
+        <Pressable testID="chat-report-button" onPress={() => c && setReport({ type: "user", id: otherUserId })} style={styles.back} hitSlop={8}>
+          <Ionicons name="ellipsis-vertical" size={22} color={colors.onSurface} />
+        </Pressable>
       </View>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <FlatList
@@ -82,10 +88,10 @@ export default function Chat() {
           renderItem={({ item }) => {
             const mine = item.sender_id === user?.user_id;
             return (
-              <View style={[styles.bubble, mine ? styles.mine : styles.theirs]} testID={`message-${item.message_id}`}>
+              <Pressable onLongPress={() => !mine && setReport({ type: "message", id: item.message_id })} delayLongPress={400} style={[styles.bubble, mine ? styles.mine : styles.theirs]} testID={`message-${item.message_id}`}>
                 <Text style={[styles.msg, mine && { color: colors.onBrandPrimary }]}>{item.text}</Text>
                 <Text style={[styles.time, mine && { color: colors.onBrandPrimary }]}>{timeLabel(item.created_at, lang)}</Text>
-              </View>
+              </Pressable>
             );
           }}
         />
@@ -104,6 +110,14 @@ export default function Chat() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      <ReportSheet
+        visible={!!report}
+        onClose={() => setReport(null)}
+        targetType={report?.type ?? "user"}
+        targetId={report?.id ?? ""}
+        blockUserId={otherUserId}
+        onBlocked={() => router.back()}
+      />
     </View>
   );
 }

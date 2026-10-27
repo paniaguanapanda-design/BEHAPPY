@@ -15,6 +15,7 @@ import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Avatar, Button, Loading, SectionTitle, Stars, VerifiedBadge } from "@/src/ui";
+import { ReportSheet } from "@/src/ReportSheet";
 
 export default function SpecialistProfile() {
   const styles = useStyles();
@@ -28,6 +29,7 @@ export default function SpecialistProfile() {
   const sq = useQuery({ queryKey: ["specialist", id], queryFn: () => api<any>(`/specialists/${id}`) });
   const rq = useQuery({ queryKey: ["reviews", id], queryFn: () => api<any[]>(`/specialists/${id}/reviews`) });
   const [sheet, setSheet] = useState<null | "review">(null);
+  const [report, setReport] = useState<null | { type: string; id: string; blockId?: string }>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
@@ -82,6 +84,17 @@ export default function SpecialistProfile() {
           <Pressable testID="specialist-back-button" onPress={() => router.back()} style={[styles.back, { top: insets.top + 8 }]}>
             <Ionicons name="chevron-back" size={24} color={colors.onSurfaceInverse} />
           </Pressable>
+          {!isMe && (
+            <View style={{ position: "absolute", right: 16, top: insets.top + 8 }}>
+              <Pressable
+                testID="specialist-report-button"
+                onPress={() => setReport({ type: "specialist", id: s.specialist_id, blockId: s.user_id })}
+                style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.scrim, alignItems: "center", justifyContent: "center" }}
+              >
+                <Ionicons name="flag-outline" size={20} color={colors.onSurfaceInverse} />
+              </Pressable>
+            </View>
+          )}
           <View style={styles.heroContent}>
             <View style={{ flex: 1, gap: 6 }}>
               <Text style={styles.name} testID="specialist-name">
@@ -163,6 +176,11 @@ export default function SpecialistProfile() {
                     <Text style={styles.reviewName}>{r.user_name}</Text>
                     <Stars value={r.rating} size={12} />
                   </View>
+                  {r.user_id !== user?.user_id && (
+                    <Pressable testID={`report-review-${r.review_id}`} onPress={() => setReport({ type: "review", id: r.review_id, blockId: r.user_id })} hitSlop={10}>
+                      <Ionicons name="flag-outline" size={18} color={colors.muted} />
+                    </Pressable>
+                  )}
                 </View>
                 {r.comment ? <Text style={styles.body}>{(lang === "it" ? r.comment_it : r.comment_es) || r.comment}</Text> : null}
               </View>
@@ -171,6 +189,14 @@ export default function SpecialistProfile() {
         </View>
       </ScrollView>
 
+      <ReportSheet
+        visible={!!report}
+        onClose={() => setReport(null)}
+        targetType={report?.type ?? "specialist"}
+        targetId={report?.id ?? ""}
+        blockUserId={report?.blockId}
+        onBlocked={() => router.back()}
+      />
       <BlurView intensity={60} tint="light" style={[styles.cta, { paddingBottom: insets.bottom + 12 }]}>
         {isMe ? (
           <Button style={{ flex: 1 }} title={t("edit_profile")} icon="create-outline" onPress={() => router.push("/specialist-form")} testID="edit-own-profile-button" />
