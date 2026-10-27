@@ -1,8 +1,9 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useI18n } from "@/src/i18n";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -21,11 +22,18 @@ export default function Scan() {
   const [perm, requestPerm] = useCameraPermissions();
   const cam = useRef<CameraView>(null);
   const { analyzing, run, pickFromGallery } = useDiagnose();
+  const [shot, setShot] = useState<string | null>(null);
+  const showCamera = !shot && !analyzing;
 
   const capture = async () => {
+    if (analyzing || shot) return;
     try {
       const pic = await cam.current?.takePictureAsync({ quality: 0.7, shutterSound: false });
-      if (pic?.uri) await run(pic.uri, pic.width, pic.height, true);
+      if (pic?.uri) {
+        setShot(pic.uri); // congela la foto y apaga la camara mientras la IA analiza
+        const ok = await run(pic.uri, pic.width, pic.height, true);
+        if (!ok) setShot(null); // si fallo, vuelve la camara
+      }
     } catch (e: any) {
       toast(e?.message || t("error_generic"), "error");
     }
@@ -64,7 +72,11 @@ export default function Scan() {
 
   return (
     <View style={styles.root}>
-      <CameraView ref={cam} style={styles.abs} facing="back" />
+      {shot ? (
+        <Image source={{ uri: shot }} style={styles.abs} contentFit="cover" />
+      ) : showCamera ? (
+        <CameraView ref={cam} style={styles.abs} facing="back" />
+      ) : null}
       <View style={styles.reticleWrap} pointerEvents="none">
         <View style={styles.reticle}>
           <View style={[styles.corner, styles.tl]} />

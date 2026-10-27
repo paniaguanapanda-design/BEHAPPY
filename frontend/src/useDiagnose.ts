@@ -14,7 +14,7 @@ export function useDiagnose() {
   const { lang, t } = useI18n();
   const toast = useToast();
 
-  const run = async (uri: string, width?: number, height?: number, replace = false) => {
+  const run = async (uri: string, width?: number, height?: number, replace = false): Promise<boolean> => {
     setAnalyzing(true);
     try {
       const base64 = await compressToBase64(uri, width, height);
@@ -26,8 +26,10 @@ export function useDiagnose() {
       const target = { pathname: "/diagnosis/[id]" as const, params: { id: d.diagnosis_id } };
       if (replace) router.replace(target);
       else router.push(target);
+      return true;
     } catch (e: any) {
       toast(e?.message || t("error_generic"), "error");
+      return false;
     } finally {
       setAnalyzing(false);
     }
@@ -36,7 +38,8 @@ export function useDiagnose() {
   const pickFromGallery = async (replace = false) => {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
     const a = res.canceled ? null : res.assets[0];
-    if (a) await run(a.uri, a.width, a.height, replace);
+    if (a) return await run(a.uri, a.width, a.height, replace);
+    return false;
   };
 
   return { analyzing, run, pickFromGallery };
