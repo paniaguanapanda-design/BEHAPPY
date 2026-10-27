@@ -10,7 +10,7 @@
       },
       "env": {
         "EXPO_PUBLIC_BACKEND_URL": "https://behappy-z7zn.onrender.com",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "90570262984-grdk3p6v2o30tac8r1ihgpm8v893o12s.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "90570262984-3q1qo0dmfanc802fcc665f2btlilj156.apps.googleusercontent.com",
         "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_gDjFfbxqTPJcUPiPSZrUKUKQdqt"
       }
     },
@@ -21,7 +21,7 @@
       },
       "env": {
         "EXPO_PUBLIC_BACKEND_URL": "https://behappy-z7zn.onrender.com",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "90570262984-grdk3p6v2o30tac8r1ihgpm8v893o12s.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "90570262984-3q1qo0dmfanc802fcc665f2btlilj156.apps.googleusercontent.com",
         "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_gDjFfbxqTPJcUPiPSZrUKUKQdqt"
       }
     }
