@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, imageUri, uploadImage } from "@/src/api";
+import { api, imageSource, uploadImage } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { CATEGORIES, SUBTRADES, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
@@ -36,7 +36,6 @@ export default function SpecialistForm() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
-  const [docNum, setDocNum] = useState("");
   const [docImg, setDocImg] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
 
@@ -104,9 +103,9 @@ export default function SpecialistForm() {
   };
 
   const verify = async () => {
-    if (!docImg || docNum.trim().length < 5) return toast(t("required"), "error");
+    if (!docImg) return toast(t("required"), "error");
     try {
-      await api("/specialists/me/verify", { body: { document_image: docImg, document_number: docNum } });
+      await api("/specialists/me/verify", { body: { document_image: docImg } });
       me.refetch();
       toast(t("in_review"));
     } catch (e: any) {
@@ -212,7 +211,7 @@ export default function SpecialistForm() {
               <View style={styles.grid}>
                 {s.portfolio?.map((p: any) => (
                   <View key={p.item_id} style={styles.gridItem}>
-                    <Image source={{ uri: imageUri(p.image) }} style={styles.gridImg} contentFit="cover" />
+                    <Image source={imageSource(p.image)} style={styles.gridImg} contentFit="cover" />
                     <Pressable testID={`delete-portfolio-${p.item_id}`} onPress={() => removeWork(p.item_id)} style={styles.del}>
                       <Ionicons name="trash" size={16} color={colors.onError} />
                     </Pressable>
@@ -235,7 +234,6 @@ export default function SpecialistForm() {
               ) : (
                 <>
                   <Text style={styles.hint}>{t("verify_text")}</Text>
-                  <TextInput testID="verify-doc-number-input" style={styles.input} placeholder={t("doc_number")} placeholderTextColor={colors.muted} value={docNum} onChangeText={setDocNum} />
                   <Pressable
                     testID="verify-doc-photo-button"
                     style={styles.docPick}
@@ -247,7 +245,7 @@ export default function SpecialistForm() {
                     {uploading === "doc" ? (
                       <ActivityIndicator color={colors.brandPrimary} />
                     ) : docImg ? (
-                      <Image source={{ uri: imageUri(docImg) }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                      <Image source={imageSource(docImg)} style={{ width: "100%", height: "100%" }} contentFit="cover" />
                     ) : (
                       <>
                         <Ionicons name="id-card-outline" size={28} color={colors.brandPrimary} />

@@ -3,7 +3,7 @@ import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { api, imageUri } from "@/src/api";
+import { api, imageSource } from "@/src/api";
 import { useI18n } from "@/src/i18n";
 import { localPhotos } from "@/src/localPhotos";
 import { fmtDate } from "@/src/time";
@@ -26,14 +26,14 @@ export function HistoryList({ bottom }: { bottom: number }) {
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
       ListEmptyComponent={q.isLoading ? null : <Text style={styles.empty} testID="history-empty">{t("no_recent")}</Text>}
       renderItem={({ item: d }) => {
-        const photo = localPhotos[d.diagnosis_id] ?? imageUri(d.image_path);
+        const photo = localPhotos[d.diagnosis_id] ? { uri: localPhotos[d.diagnosis_id] } : imageSource(d.image_path);
         return (
           <Pressable
             testID={`history-item-${d.diagnosis_id}`}
             onPress={() => router.push({ pathname: "/diagnosis/[id]", params: { id: d.diagnosis_id } })}
             style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}
           >
-            {photo ? <Image source={{ uri: photo }} style={styles.thumb} contentFit="cover" /> : <View style={styles.thumb} />}
+            {photo ? <Image source={photo} style={styles.thumb} contentFit="cover" /> : <View style={styles.thumb} />}
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={styles.title} numberOfLines={1}>
                 {d[`title_${lang}`] || d.title}

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Form, Query, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Form, Header
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
@@ -40,13 +40,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-
-
-@app.get("/debug-ip-temporal", include_in_schema=False)
-async def debug_ip_temporal(request: Request):  # TEMPORAL: ver que cabeceras de IP pone Render; se borra enseguida
-    h = request.headers
-    return {k: h.get(k) for k in ("x-forwarded-for", "true-client-ip", "cf-connecting-ip", "x-real-ip", "cf-ray",
-                                  "x-request-start", "rndr-id")} | {"peer": request.client.host if request.client else None}
 
 
 @app.get("/health", include_in_schema=False)
@@ -141,14 +134,22 @@ def _s3_client():
     return _s3
 
 
+# En Render el disco se borra en cada despliegue: alli las fotos solo pueden ir a S3 / Cloudflare R2.
+ON_RENDER = bool(os.environ.get("RENDER"))
+
+
 def init_storage():
     if S3_BUCKET:
         _s3_client()
+    elif ON_RENDER:
+        logger.critical("Falta S3_BUCKET en Render: las subidas de fotos quedan desactivadas")
     else:
         LOCAL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if not S3_BUCKET and ON_RENDER:
+        raise HTTPException(503, "Almacenamiento de fotos no configurado")
     if S3_BUCKET:
         _s3_client().put_object(Bucket=S3_BUCKET, Key=path, Body=data, ContentType=content_type)
     else:
@@ -193,10 +194,33 @@ from collections import defaultdict, deque
 _hits = defaultdict(deque)
 
 
+def _valid_ip(v: Optional[str]) -> Optional[str]:
+    import ipaddress
+    try:
+        return str(ipaddress.ip_address((v or "").strip()))
+    except ValueError:
+        return None
+
+
 def client_ip(request: Request) -> str:
+    """IP real del visitante, que el visitante no puede inventar.
+    - Render tiene Cloudflare delante: Cloudflare pone CF-Connecting-IP y rechaza las peticiones que la traen
+      del cliente. X-Forwarded-For NO sirve: el cliente puede escribir lo que quiera al principio.
+    - La web (Vercel) llama al servidor en nombre del visitante: manda su IP en X-BeHappy-Client-IP junto con
+      la clave secreta WEB_PROXY_KEY; sin la clave esa cabecera se ignora."""
+    import hmac
     h = request.headers
-    ip = h.get("cf-connecting-ip") or (h.get("x-forwarded-for") or "").split(",")[0].strip()
-    return ip or (request.client.host if request.client else "unknown")
+    key = os.environ.get("WEB_PROXY_KEY", "")
+    if key and hmac.compare_digest(h.get("x-behappy-proxy-key", ""), key):
+        ip = _valid_ip(h.get("x-behappy-client-ip"))
+        if ip:
+            return ip
+    ip = _valid_ip(h.get("cf-connecting-ip"))
+    if ip:
+        return ip
+    if os.environ.get("RENDER"):
+        return "sin-ip"  # no deberia pasar detras de Cloudflare; no se confia en el resto de cabeceras
+    return request.client.host if request.client else "unknown"
 
 
 def rate_limit(key: str, limit: int, window_s: int) -> None:
@@ -220,8 +244,15 @@ def public_user(u: dict) -> dict:
     return {k: u.get(k) for k in ["user_id", "email", "name", "picture", "role", "specialist_id", "created_at"]}
 
 
-def make_jwt(user_id: str) -> str:
-    return jwt.encode({"sub": user_id, "exp": now() + timedelta(days=7), "type": "access"}, JWT_SECRET, algorithm="HS256")
+SESSION_DAYS = 7
+
+
+async def make_jwt(user_id: str) -> str:
+    """Cada inicio de sesion crea una sesion en la base de datos; cerrar sesion la borra y el token deja de valer."""
+    jti = uuid.uuid4().hex
+    exp = now() + timedelta(days=SESSION_DAYS)
+    await db.auth_sessions.insert_one({"jti": jti, "user_id": user_id, "created_at": now(), "expires_at": exp})
+    return jwt.encode({"sub": user_id, "jti": jti, "exp": exp, "type": "access"}, JWT_SECRET, algorithm="HS256")
 
 
 async def user_from_token(token: str) -> Optional[dict]:
@@ -230,6 +261,9 @@ async def user_from_token(token: str) -> Optional[dict]:
     user_id = None
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        jti = payload.get("jti")
+        if not jti or not await db.auth_sessions.find_one({"jti": jti, "user_id": payload.get("sub")}, {"_id": 1}):
+            return None  # sesion cerrada (o token antiguo sin sesion): hay que volver a entrar
         user_id = payload.get("sub")
     except jwt.PyJWTError:
         sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
@@ -288,7 +322,7 @@ async def register(body: RegisterIn, request: Request):
             "created_at": iso(now())}
     await db.users.insert_one(user)
     user.pop("_id", None)
-    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
+    return {"session_token": await make_jwt(user["user_id"]), "user": public_user(user)}
 
 
 @api.post("/auth/login")
@@ -301,7 +335,7 @@ async def login(body: LoginIn, request: Request):
         raise HTTPException(401, "Invalid email or password")
     await apply_prereg(user)
     await start_web_promo(user, request)
-    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
+    return {"session_token": await make_jwt(user["user_id"]), "user": public_user(user)}
 
 
 class GoogleLoginIn(BaseModel):
@@ -343,7 +377,7 @@ async def google_login(body: GoogleLoginIn, request: Request):
         logger.warning("perfil desde pre-registro no creado para %s: %s", user["user_id"], e)
     await apply_prereg(user)
     await start_web_promo(user, request)
-    return {"session_token": make_jwt(user["user_id"]), "user": public_user(user)}
+    return {"session_token": await make_jwt(user["user_id"]), "user": public_user(user)}
 
 @api.get("/auth/me")
 async def me(request: Request):
@@ -356,7 +390,23 @@ async def me(request: Request):
 async def logout(request: Request):
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
-        await db.user_sessions.delete_one({"session_token": auth[7:]})
+        token = auth[7:]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], options={"verify_exp": False})
+            if payload.get("jti"):
+                await db.auth_sessions.delete_one({"jti": payload["jti"]})
+        except jwt.PyJWTError:
+            pass
+        await db.user_sessions.delete_one({"session_token": token})
+    return {"ok": True}
+
+
+@api.post("/auth/logout-all")
+async def logout_all(request: Request):
+    """Cierra la sesion en todos los dispositivos."""
+    user = await current_user(request)
+    await db.auth_sessions.delete_many({"user_id": user["user_id"]})
+    await db.user_sessions.delete_many({"user_id": user["user_id"]})
     return {"ok": True}
 
 
@@ -427,10 +477,10 @@ async def upload(request: Request, file: UploadFile = File(...)):
 
 
 @api.get("/files/{path:path}")
-async def get_file(path: str, request: Request, token: Optional[str] = Query(None)):
+async def get_file(path: str, request: Request):
+    # El token solo se acepta en la cabecera Authorization, nunca en la direccion (se filtraria en registros y capturas)
     auth = request.headers.get("Authorization", "")
-    tok = auth[7:] if auth.startswith("Bearer ") else token
-    user = await user_from_token(tok)
+    user = await user_from_token(auth[7:] if auth.startswith("Bearer ") else None)
     if not user:
         raise HTTPException(401, "Not authenticated")
     rec = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
@@ -618,7 +668,7 @@ class PortfolioIn(BaseModel):
 
 class VerifyIn(BaseModel):
     document_image: str = Field(max_length=300)
-    document_number: str = Field(max_length=40)
+    document_number: Optional[str] = Field(default=None, max_length=40)  # ya no se guarda: basta la foto
 
 
 class ReviewIn(BaseModel):
@@ -771,12 +821,10 @@ async def verify(body: VerifyIn, request: Request):
         raise HTTPException(404, "Not a specialist")
     if not own_upload(body.document_image, user):
         raise HTTPException(400, "Invalid document image")
-    if len(body.document_number.strip()) < 5:
-        raise HTTPException(400, "Invalid document number")
-    # MVP: identity document + number submitted => verified automatically
+    # El numero del documento no se guarda: es un dato de identidad y la revision se hace con la foto
     await db.specialists.update_one({"user_id": user["user_id"]}, {"$set": {
-        "verification_document": body.document_image, "document_number": body.document_number.strip(),
-        "verification_status": "in_review", "verified": False, "submitted_at": iso(now())}})
+        "verification_document": body.document_image, "verification_status": "in_review", "verified": False,
+        "submitted_at": iso(now())}, "$unset": {"document_number": ""}})
     # badge is only granted after a manual review (no auto-approval)
     return {"verified": False, "verification_status": "in_review"}
 
@@ -872,7 +920,7 @@ def require_admin(token: Optional[str]):
 async def admin_verifications(x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
     items = await db.specialists.find({"verification_status": "in_review"},
-                                      {"_id": 0, "specialist_id": 1, "name": 1, "user_id": 1, "document_number": 1,
+                                      {"_id": 0, "specialist_id": 1, "name": 1, "user_id": 1,
                                        "verification_document": 1, "submitted_at": 1}).to_list(100)
     for it in items:
         doc = it.get("verification_document") or ""
@@ -1363,6 +1411,10 @@ async def startup():
     await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
     await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
+    await db.auth_sessions.create_index("jti", unique=True)
+    await db.auth_sessions.create_index("user_id")
+    await db.auth_sessions.create_index("expires_at", expireAfterSeconds=0)
+    await db.specialists.update_many({"document_number": {"$exists": True}}, {"$unset": {"document_number": ""}})
     try:
         await db[PREREG].create_index("email", unique=True, name="email_unico")
     except Exception as e:

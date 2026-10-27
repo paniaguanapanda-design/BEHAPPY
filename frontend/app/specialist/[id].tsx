@@ -8,7 +8,7 @@ import { Image } from "expo-image";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, imageUri } from "@/src/api";
+import { api, imageSource } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { captionFor, tradesLabel, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
@@ -79,7 +79,7 @@ export default function SpecialistProfile() {
     <View style={styles.root}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}>
         <View style={styles.hero}>
-          {heroImg ? <Image source={{ uri: imageUri(heroImg) }} style={styles.abs} contentFit="cover" /> : <View style={[styles.abs, { backgroundColor: colors.brandPrimary }]} />}
+          {heroImg ? <Image source={imageSource(heroImg)} style={styles.abs} contentFit="cover" /> : <View style={[styles.abs, { backgroundColor: colors.brandPrimary }]} />}
           <LinearGradient colors={["transparent", colors.surfaceInverse]} style={styles.abs} />
           <Pressable testID="specialist-back-button" onPress={() => router.back()} style={[styles.back, { top: insets.top + 8 }]}>
             <Ionicons name="chevron-back" size={24} color={colors.onSurfaceInverse} />
@@ -155,7 +155,7 @@ export default function SpecialistProfile() {
               <View style={styles.grid}>
                 {s.portfolio.map((p: any) => (
                   <Pressable key={p.item_id} testID={`portfolio-item-${p.item_id}`} onPress={() => setPreview(p.image)} style={styles.gridItem}>
-                    <Image source={{ uri: imageUri(p.image) }} style={styles.gridImg} contentFit="cover" />
+                    <Image source={imageSource(p.image)} style={styles.gridImg} contentFit="cover" />
                     <Text style={styles.caption} numberOfLines={1}>
                       {captionFor(p, lang)}
                     </Text>
@@ -255,7 +255,7 @@ export default function SpecialistProfile() {
 
       <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
         <Pressable style={styles.previewBg} onPress={() => setPreview(null)} testID="portfolio-preview">
-          {preview && <Image source={{ uri: imageUri(preview) }} style={{ width: "100%", height: "70%" }} contentFit="contain" />}
+          {preview && <Image source={imageSource(preview)} style={{ width: "100%", height: "70%" }} contentFit="contain" />}
         </Pressable>
       </Modal>
     </View>

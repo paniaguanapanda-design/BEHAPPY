@@ -30,10 +30,13 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return res.json();
 }
 
-export function imageUri(p?: string | null): string | undefined {
+export type ImageSrc = { uri: string; headers?: Record<string, string>; cacheKey?: string };
+
+// The session token travels in the Authorization header, never inside the image address.
+export function imageSource(p?: string | null): ImageSrc | undefined {
   if (!p) return undefined;
-  if (p.startsWith("http") || p.startsWith("data:")) return p;
-  return `${API}/files/${p}?token=${encodeURIComponent(token ?? "")}`;
+  if (/^(https?:|data:|file:|content:|blob:)/.test(p)) return { uri: p };
+  return { uri: `${API}/files/${p}`, headers: token ? { Authorization: `Bearer ${token}` } : undefined, cacheKey: p };
 }
 
 export async function uploadImage(uri: string, mimeType?: string | null): Promise<string> {
