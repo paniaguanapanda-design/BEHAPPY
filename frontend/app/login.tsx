@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -19,7 +19,7 @@ export default function Login() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { login, register, loginWithGoogle } = useAuth();
   const toast = useToast();
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -105,6 +105,15 @@ export default function Login() {
           <Pressable testID="toggle-auth-mode" onPress={() => setMode(mode === "in" ? "up" : "in")} style={styles.switch}>
             <Text style={styles.switchText}>{mode === "in" ? t("no_account") : t("have_account")}</Text>
           </Pressable>
+          <View style={styles.legalRow}>
+            <Text style={styles.legalText} onPress={() => Linking.openURL("https://www.be-happyapp.com/privacy")}>
+              {lang === "it" ? "Privacy" : "Privacidad"}
+            </Text>
+            <Text style={styles.legalText}> · </Text>
+            <Text style={styles.legalText} onPress={() => Linking.openURL("https://www.be-happyapp.com/termini")}>
+              {lang === "it" ? "Termini" : "Términos"}
+            </Text>
+          </View>
           <View style={styles.langBottom}>
             <Ionicons name="language" size={18} color={colors.muted} />
             <LangToggle />
@@ -142,6 +151,8 @@ const useStyles = makeStyles((c) => ({
   orRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 4 },
   line: { flex: 1, height: 1, backgroundColor: c.divider },
   or: { color: c.muted, fontSize: 13 },
+  legalRow: { flexDirection: "row", justifyContent: "center", marginTop: 4 },
+  legalText: { color: c.muted, fontSize: 13, textDecorationLine: "underline" },
   switch: { alignItems: "center", paddingVertical: 12, minHeight: 44 },
   switchText: { color: c.brandTertiary, fontWeight: "600", fontSize: 14 },
 }));

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, UploadFile, File, Form, Query, Header
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
@@ -808,6 +808,73 @@ async def create_report(body: ReportIn, request: Request):
     return {"ok": True}
 
 
+# ---------------- Admin (moderacion manual) ----------------
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+
+
+def require_admin(token: Optional[str]):
+    import hmac
+    if not ADMIN_TOKEN or not token or not hmac.compare_digest(token, ADMIN_TOKEN):
+        raise HTTPException(403, "Forbidden")
+
+
+@api.get("/admin/verifications")
+async def admin_verifications(x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    items = await db.specialists.find({"verification_status": "in_review"},
+                                      {"_id": 0, "specialist_id": 1, "name": 1, "user_id": 1, "document_number": 1,
+                                       "verification_document": 1, "submitted_at": 1}).to_list(100)
+    for it in items:
+        doc = it.get("verification_document") or ""
+        it["verification_document"] = (doc[:80] + "...") if len(doc) > 80 else doc
+    return items
+
+
+@api.get("/admin/verifications/{sid}/document")
+async def admin_verification_document(sid: str, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0, "verification_document": 1})
+    if not s or not s.get("verification_document"):
+        raise HTTPException(404, "No document")
+    doc = s["verification_document"]
+    if doc.startswith("data:"):
+        head, _, b64 = doc.partition(",")
+        ct = head[5:].split(";")[0] or "image/jpeg"
+        return Response(content=base64.b64decode(b64), media_type=ct)
+    data, ct = await run_in_threadpool(get_object, doc)
+    return Response(content=data, media_type=ct)
+
+
+@api.post("/admin/verifications/{sid}/{decision}")
+async def admin_decide_verification(sid: str, decision: str, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    if decision not in ("approve", "reject"):
+        raise HTTPException(400, "decision must be approve or reject")
+    if decision == "approve":
+        upd = {"verified": True, "verification_status": "verified", "verified_by": "admin", "verified_at": iso(now())}
+    else:
+        upd = {"verified": False, "verification_status": "rejected"}
+    r = await db.specialists.update_one({"specialist_id": sid}, {"$set": upd})
+    if not r.matched_count:
+        raise HTTPException(404, "Specialist not found")
+    return {"ok": True, "status": upd["verification_status"]}
+
+
+@api.get("/admin/reports")
+async def admin_reports(x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    return await db.reports.find({"status": "open"}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+@api.post("/admin/reports/{rid}/resolve")
+async def admin_resolve_report(rid: str, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    r = await db.reports.update_one({"report_id": rid}, {"$set": {"status": "resolved", "resolved_at": iso(now())}})
+    if not r.matched_count:
+        raise HTTPException(404, "Report not found")
+    return {"ok": True}
+
+
 @api.post("/blocks")
 async def block_user(body: BlockIn, request: Request):
     user = await current_user(request)
@@ -1143,12 +1210,6 @@ async def startup():
     await db.files.create_index("storage_path")
     await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
     await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
-    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
-    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
-    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
-    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
-    await db.reviews.create_index([("specialist_id", 1), ("user_id", 1)], unique=True)
-    await db.conversations.create_index([("client_id", 1), ("specialist_id", 1)], unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
     # migrate single category -> categories (trades limited to the 5 supported ones)
     async for s in db.specialists.find({"categories": {"$exists": False}}, {"_id": 0, "specialist_id": 1, "category": 1}):
@@ -1167,7 +1228,8 @@ async def startup():
 
 app.include_router(api)
 
-app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+_cors = [o.strip() for o in os.environ.get("CORS_ORIGINS", "https://www.be-happyapp.com").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"])
 
 
 @app.on_event("shutdown")
