@@ -42,6 +42,13 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 
+@app.get("/debug-ip-temporal", include_in_schema=False)
+async def debug_ip_temporal(request: Request):  # TEMPORAL: ver que cabeceras de IP pone Render; se borra enseguida
+    h = request.headers
+    return {k: h.get(k) for k in ("x-forwarded-for", "true-client-ip", "cf-connecting-ip", "x-real-ip", "cf-ray",
+                                  "x-request-start", "rndr-id")} | {"peer": request.client.host if request.client else None}
+
+
 @app.get("/health", include_in_schema=False)
 @app.head("/health", include_in_schema=False)
 async def health():
