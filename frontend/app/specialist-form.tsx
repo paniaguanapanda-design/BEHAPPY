@@ -12,7 +12,7 @@ import { useAuth } from "@/src/auth";
 import { CATEGORIES, SUBTRADES, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar, Button, SectionTitle, VerifiedBadge } from "@/src/ui";
 
 async function pick(): Promise<ImagePicker.ImagePickerAsset | null> {
@@ -268,7 +268,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   header: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: c.divider },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 20, fontWeight: "800", color: c.onSurface },
+  title: { fontSize: 20, fontFamily: fonts.display, color: c.onSurface },
   avatarRow: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 8 },
   avatarEmpty: { width: 88, height: 88, borderRadius: 44, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.brandPrimary, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   label: { fontSize: 13, fontWeight: "600", color: c.muted, marginTop: 4 },
@@ -284,6 +284,6 @@ const useStyles = makeStyles((c) => ({
   del: { position: "absolute", top: 6, right: 6, width: 30, height: 30, borderRadius: 15, backgroundColor: c.error, alignItems: "center", justifyContent: "center" },
   verifyBox: { marginTop: 24, gap: 12, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
   docPick: { height: 140, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.borderStrong, alignItems: "center", justifyContent: "center", gap: 6, overflow: "hidden" },
-  docText: { color: c.brandPrimary, fontWeight: "600" },
+  docText: { color: c.brandTertiary, fontWeight: "600" },
   mbBanner: { marginTop: 16, padding: 16, borderRadius: 16, backgroundColor: c.brandSecondary, gap: 12 },
 }));

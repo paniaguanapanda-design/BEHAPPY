@@ -7,7 +7,7 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 import { LangToggle } from "@/src/LangToggle";
 import { useMembership } from "@/src/membership";
@@ -188,9 +188,9 @@ const useStyles = makeStyles((c) => ({
   segOn: { backgroundColor: c.surfaceSecondary },
   segText: { fontSize: 14, fontWeight: "600", color: c.onSurfaceTertiary },
   segTextOn: { color: c.brandPrimary },
-  title: { fontSize: 28, fontWeight: "800", color: c.onSurface, letterSpacing: -0.6 },
+  title: { fontSize: 28, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.6 },
   userCard: { flexDirection: "row", alignItems: "center", gap: 16, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
-  name: { fontSize: 20, fontWeight: "800", color: c.onSurface },
+  name: { fontSize: 20, fontFamily: fonts.display, color: c.onSurface },
   email: { fontSize: 14, color: c.muted },
   role: { alignSelf: "flex-start", backgroundColor: c.brandSecondary, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, marginTop: 2 },
   roleText: { color: c.onBrandSecondary, fontWeight: "700", fontSize: 12 },
@@ -204,7 +204,7 @@ const useStyles = makeStyles((c) => ({
   sep: { height: 1, backgroundColor: c.divider, marginLeft: 64 },
   modalBack: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 24 },
   modalCard: { width: "100%", maxWidth: 420, borderRadius: 20, backgroundColor: c.surfaceSecondary, padding: 20, gap: 12 },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: c.onSurface },
+  modalTitle: { fontSize: 20, fontFamily: fonts.display, color: c.onSurface },
   modalText: { fontSize: 14, color: c.muted, lineHeight: 20 },
   input: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingHorizontal: 14, color: c.onSurface, fontSize: 16 },
   errText: { color: c.error, fontSize: 14 },

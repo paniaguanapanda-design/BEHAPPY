@@ -9,7 +9,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 
@@ -77,7 +77,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   header: { paddingHorizontal: 24, paddingBottom: 16, backgroundColor: c.surface },
   hello: { fontSize: 14, color: c.muted, fontWeight: "600" },
-  title: { fontSize: 28, fontWeight: "800", color: c.onSurface, letterSpacing: -0.6, marginTop: 4 },
+  title: { fontSize: 28, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.6, marginTop: 4 },
   abs: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   hero: { marginHorizontal: 16, height: 300, borderRadius: 20, overflow: "hidden", justifyContent: "flex-end" },
   reticle: { position: "absolute", top: 40, left: 60, right: 60, bottom: 110 },
@@ -88,7 +88,7 @@ const useStyles = makeStyles((c) => ({
   br: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 8 },
   heroContent: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
   camIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
-  heroTitle: { color: c.onSurfaceInverse, fontSize: 20, fontWeight: "800" },
+  heroTitle: { color: c.onSurfaceInverse, fontSize: 20, fontFamily: fonts.display },
   heroSub: { color: c.onSurfaceInverse, opacity: 0.8, fontSize: 13, marginTop: 2 },
   galleryBtn: {
     marginHorizontal: 16,
@@ -103,7 +103,7 @@ const useStyles = makeStyles((c) => ({
     justifyContent: "center",
     gap: 8,
   },
-  galleryText: { color: c.brandPrimary, fontWeight: "700", fontSize: 15 },
+  galleryText: { color: c.brandTertiary, fontWeight: "700", fontSize: 15 },
   section: { fontSize: 20, fontWeight: "700", color: c.onSurface, marginTop: 32, marginBottom: 12, paddingHorizontal: 24 },
   empty: { marginHorizontal: 16, padding: 24, borderRadius: 20, backgroundColor: c.brandSecondary, alignItems: "center", gap: 8 },
   emptyText: { color: c.onBrandSecondary, textAlign: "center", fontSize: 14, lineHeight: 20 },

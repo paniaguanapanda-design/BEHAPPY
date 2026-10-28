@@ -6,7 +6,7 @@ import { api } from "@/src/api";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 
 type Props = {
   visible: boolean;
@@ -110,7 +110,7 @@ const useStyles = makeStyles((c) => ({
   backdrop: { flex: 1, backgroundColor: c.scrim },
   sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 12, gap: 4 },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: c.borderStrong, marginBottom: 8 },
-  title: { fontSize: 20, fontWeight: "800", color: c.onSurface },
+  title: { fontSize: 20, fontFamily: fonts.display, color: c.onSurface },
   sub: { fontSize: 14, color: c.muted, marginBottom: 8 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, paddingHorizontal: 8, borderRadius: 12 },
   rowText: { fontSize: 16, color: c.onSurface, flex: 1 },

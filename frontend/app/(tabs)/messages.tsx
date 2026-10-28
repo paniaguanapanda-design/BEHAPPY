@@ -8,7 +8,7 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar } from "@/src/ui";
 
 import { timeLabel } from "@/src/time";
@@ -82,7 +82,7 @@ export default function Messages() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   header: { paddingHorizontal: 24, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.divider },
-  title: { fontSize: 28, fontWeight: "800", color: c.onSurface, letterSpacing: -0.6 },
+  title: { fontSize: 28, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.6 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 12 },
   emptyText: { color: c.muted, textAlign: "center", fontSize: 15, lineHeight: 22 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.divider },

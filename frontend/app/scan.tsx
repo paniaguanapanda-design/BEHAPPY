@@ -6,7 +6,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useI18n } from "@/src/i18n";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 import { Button } from "@/src/ui";
@@ -107,11 +107,11 @@ const useStyles = makeStyles((c) => ({
   close: { position: "absolute", left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: c.scrim, alignItems: "center", justifyContent: "center" },
   reticleWrap: { ...{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, alignItems: "center", justifyContent: "center", gap: 16 },
   reticle: { width: 260, height: 260 },
-  corner: { position: "absolute", width: 40, height: 40, borderColor: c.onSurfaceInverse },
-  tl: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 12 },
-  tr: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 12 },
-  bl: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 12 },
-  br: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 12 },
+  corner: { position: "absolute", width: 40, height: 40, borderColor: c.brandPrimary },
+  tl: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 3 },
+  tr: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 3 },
+  bl: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 3 },
+  br: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 3 },
   hint: { color: c.onSurfaceInverse, fontSize: 14, fontWeight: "600", backgroundColor: c.scrim, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, overflow: "hidden" },
   controls: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingTop: 24 },
   side: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: c.scrim },
@@ -119,6 +119,6 @@ const useStyles = makeStyles((c) => ({
   shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: c.onSurfaceInverse },
   permWrap: { alignItems: "center", paddingHorizontal: 24, gap: 16, backgroundColor: c.surface, justifyContent: "center" },
   permIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
-  permTitle: { fontSize: 24, fontWeight: "800", color: c.onSurface, textAlign: "center" },
+  permTitle: { fontSize: 24, fontFamily: fonts.display, color: c.onSurface, textAlign: "center" },
   permText: { fontSize: 15, color: c.muted, textAlign: "center", lineHeight: 22, marginBottom: 16 },
 }));

@@ -9,7 +9,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, imageSource } from "@/src/api";
 import { CATEGORIES, tradesLabel, useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar, Button, Stars, VerifiedBadge } from "@/src/ui";
 
 export default function Specialists() {
@@ -151,7 +151,7 @@ export default function Specialists() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   header: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  title: { fontSize: 28, fontWeight: "800", color: c.onSurface, letterSpacing: -0.6, paddingHorizontal: 8 },
+  title: { fontSize: 28, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.6, paddingHorizontal: 8 },
   search: { flexDirection: "row", alignItems: "center", gap: 8, height: 46, borderRadius: 12, backgroundColor: c.surfaceTertiary, paddingHorizontal: 14 },
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface, height: 46 },
   chipRow: { height: 56, justifyContent: "center", borderBottomWidth: 1, borderBottomColor: c.divider },
