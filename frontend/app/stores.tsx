@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as Location from "expo-location";
+import Constants from "expo-constants";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { API, api } from "@/src/api";
 import { CATEGORIES, useI18n } from "@/src/i18n";
@@ -13,7 +14,10 @@ import { Button, Loading } from "@/src/ui";
 import { ReportSheet, STORE_REASONS } from "@/src/ReportSheet";
 
 // react-native-maps is native only (the app ships on Android); on web the screen shows the list alone.
-const Maps: typeof import("react-native-maps") | null = Platform.OS === "web" ? null : require("react-native-maps");
+// Without a Google Maps key in the build the native map would crash on Android, so the list is shown alone.
+const HAS_MAPS_KEY = Boolean(Constants.expoConfig?.extra?.hasMapsKey);
+const Maps: typeof import("react-native-maps") | null =
+  Platform.OS === "web" || !HAS_MAPS_KEY ? null : require("react-native-maps");
 
 type Store = {
   store_id: string;
