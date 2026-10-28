@@ -11,7 +11,7 @@ import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { rcEnabled, rcSimulated, useSubscription } from "@/src/revenuecat";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Button } from "@/src/ui";
 import { fmtDate } from "@/src/time";
 
@@ -90,7 +90,7 @@ export default function MembershipScreen() {
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
-        <LinearGradient colors={[colors.brandPrimary, colors.brandTertiary]} style={[styles.hero, { paddingTop: insets.top + 8 }]}>
+        <LinearGradient colors={[colors.surfaceInverse, colors.brandTertiary]} style={[styles.hero, { paddingTop: insets.top + 8 }]}>
           <Pressable testID="membership-back-button" onPress={() => (router.canGoBack() ? router.back() : router.replace("/profile"))} style={styles.back}>
             <Ionicons name="chevron-back" size={24} color={colors.onBrandPrimary} />
           </Pressable>
@@ -204,8 +204,8 @@ const useStyles = makeStyles((c) => ({
   hero: { paddingHorizontal: 24, paddingBottom: 32, alignItems: "center", gap: 8 },
   back: { alignSelf: "flex-start", width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -12 },
   crown: { width: 64, height: 64, borderRadius: 32, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
-  heroTitle: { color: c.onBrandPrimary, fontSize: 26, fontWeight: "800", textAlign: "center", letterSpacing: -0.5 },
-  heroSub: { color: c.onBrandPrimary, opacity: 0.85, fontSize: 15, textAlign: "center" },
+  heroTitle: { color: c.onSurfaceInverse, fontSize: 26, fontFamily: fonts.display, textAlign: "center", letterSpacing: -0.5 },
+  heroSub: { color: c.onSurfaceInverse, opacity: 0.85, fontSize: 15, textAlign: "center" },
   content: { padding: 16, gap: 16 },
   status: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 12, borderWidth: 1 },
   statusOn: { backgroundColor: c.brandSecondary, borderColor: c.brandSecondary },
@@ -224,7 +224,7 @@ const useStyles = makeStyles((c) => ({
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: c.brandPrimary, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.brandPrimary },
   planName: { fontSize: 15, fontWeight: "700", color: c.onSurface },
-  planPrice: { fontSize: 24, fontWeight: "800", color: c.onSurface, letterSpacing: -0.5 },
+  planPrice: { fontSize: 24, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.5 },
   planPer: { fontSize: 13, color: c.muted },
   checking: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center" },
   method: { gap: 8, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
@@ -236,5 +236,5 @@ const useStyles = makeStyles((c) => ({
   restoreText: { color: c.brandTertiary, fontWeight: "700", fontSize: 14 },
   backdrop: { flex: 1, backgroundColor: c.scrim, alignItems: "center", justifyContent: "center", padding: 24 },
   dialog: { width: "100%", maxWidth: 360, backgroundColor: c.surfaceSecondary, borderRadius: 20, padding: 24, gap: 12 },
-  dialogTitle: { fontSize: 20, fontWeight: "800", color: c.onSurface },
+  dialogTitle: { fontSize: 20, fontFamily: fonts.display, color: c.onSurface },
 }));

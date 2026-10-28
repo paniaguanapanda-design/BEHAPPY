@@ -42,7 +42,14 @@
           "backgroundColor": "#F8F5EE"
         }
       ],
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/BricolageGrotesque_800ExtraBold.ttf"
+          ]
+        }
+      ],
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",

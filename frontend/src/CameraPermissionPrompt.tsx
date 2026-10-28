@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useI18n } from "@/src/i18n";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Button } from "@/src/ui";
 
 /** Asks for camera access every time the user enters the app (launch or return from background) until granted. */
@@ -71,6 +71,6 @@ const useStyles = makeStyles((c) => ({
   sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 12, alignItems: "stretch" },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: c.borderStrong },
   icon: { alignSelf: "center", width: 72, height: 72, borderRadius: 36, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: 8 },
-  title: { fontSize: 22, fontWeight: "800", color: c.onSurface, textAlign: "center" },
+  title: { fontSize: 22, fontFamily: fonts.display, color: c.onSurface, textAlign: "center" },
   text: { fontSize: 15, color: c.muted, textAlign: "center", lineHeight: 22, marginBottom: 8 },
 }));

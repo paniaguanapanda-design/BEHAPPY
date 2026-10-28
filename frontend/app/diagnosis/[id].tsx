@@ -8,7 +8,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, imageSource } from "@/src/api";
 import { CATEGORIES, useI18n } from "@/src/i18n";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { DifficultyBadge } from "@/src/DifficultyBadge";
 import { localPhotos } from "@/src/localPhotos";
 import { Button, Loading, SectionTitle } from "@/src/ui";
@@ -204,7 +204,7 @@ const useStyles = makeStyles((c) => ({
   tagRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   catTag: { backgroundColor: c.brandSecondary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   catText: { color: c.onBrandSecondary, fontWeight: "700", fontSize: 13 },
-  title: { color: c.onSurfaceInverse, fontSize: 28, fontWeight: "800", letterSpacing: -0.6 },
+  title: { color: c.onSurfaceInverse, fontSize: 28, fontFamily: fonts.display, letterSpacing: -0.6 },
   content: { padding: 16, gap: 24 },
   outcome: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, gap: 10 },
   outcomeText: { fontSize: 15, color: c.onSurface, lineHeight: 22 },

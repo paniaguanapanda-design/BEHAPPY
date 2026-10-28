@@ -5,23 +5,25 @@ import { Appearance, StyleSheet, useColorScheme } from "react-native";
 export type ColorScheme = "light" | "dark";
 
 const light = {
-  surface: "#FAF9F6",
-  onSurface: "#1C1B19",
+  // Same palette as be-happyapp.com: orange + navy on cool light greys.
+  surface: "#F4F6F9",
+  onSurface: "#0A1628",
   surfaceSecondary: "#FFFFFF",
-  onSurfaceSecondary: "#1C1B19",
-  surfaceTertiary: "#F0EDE6",
-  onSurfaceTertiary: "#4A4844",
-  surfaceInverse: "#1C1B19",
+  onSurfaceSecondary: "#0A1628",
+  surfaceTertiary: "#EAEEF3",
+  onSurfaceTertiary: "#46546A",
+  surfaceInverse: "#0A1628",
   onSurfaceInverse: "#FFFFFF",
-  muted: "#8B8881",
+  muted: "#5F6B7E",
 
-  brand: "#2D4A22",
-  onBrand: "#FFFFFF",
-  brandPrimary: "#2D4A22",
-  onBrandPrimary: "#FFFFFF",
-  brandSecondary: "#E8F0E4",
-  onBrandSecondary: "#2D4A22",
-  brandTertiary: "#4A7A3A",
+  // Orange buttons carry navy text (6.5:1); white on orange is only 2.9:1.
+  brand: "#FF6B00",
+  onBrand: "#0A1628",
+  brandPrimary: "#FF6B00",
+  onBrandPrimary: "#0A1628",
+  brandSecondary: "#FFF4EB",
+  onBrandSecondary: "#9A3F00",
+  brandTertiary: "#1E3A5F",
   onBrandTertiary: "#FFFFFF",
 
   success: "#34C759",
@@ -33,10 +35,10 @@ const light = {
   info: "#007AFF",
   onInfo: "#FFFFFF",
 
-  border: "#E5E3DF",
-  borderStrong: "#CFCBC5",
-  divider: "#E5E3DF",
-  scrim: "rgba(28,27,25,0.55)",
+  border: "#E1E6ED",
+  borderStrong: "#C7CFDA",
+  divider: "#E1E6ED",
+  scrim: "rgba(10,22,40,0.55)",
 };
 
 export type ThemeColors = typeof light;
@@ -46,6 +48,9 @@ export const defaultScheme = "light" satisfies ColorScheme;
 export const themes: { light: ThemeColors; dark?: ThemeColors } = { light };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 };
+// Display face for titles, embedded at build time by the expo-font plugin (app.json).
+export const fonts = { display: "BricolageGrotesque_800ExtraBold" };
+
 export const radius = { sm: 6, md: 12, lg: 20, pill: 999 };
 
 export function setColorScheme(scheme: ColorScheme | null) {

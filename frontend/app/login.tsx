@@ -10,7 +10,7 @@ import { api } from "@/src/api";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { Button } from "@/src/ui";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
 
 const LOGO = require("@/assets/images/behappy-logo.png");
@@ -223,7 +223,7 @@ const useStyles = makeStyles((c) => ({
   logoImg: { width: 32, height: 32, borderRadius: 16 },
   logoText: { color: c.onSurface, fontWeight: "800", fontSize: 16, letterSpacing: 0.5 },
   heroBottom: { padding: 24, gap: 8, alignItems: "center" },
-  title: { color: c.onSurfaceInverse, fontSize: 32, fontWeight: "800", letterSpacing: -0.8, lineHeight: 36, textAlign: "center" },
+  title: { color: c.onSurfaceInverse, fontSize: 32, fontFamily: fonts.display, letterSpacing: -0.8, lineHeight: 36, textAlign: "center" },
   sub: { color: c.onSurfaceInverse, opacity: 0.85, fontSize: 15, lineHeight: 21, textAlign: "center" },
   langBottom: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 },
   form: { padding: 24, gap: 12 },
@@ -245,7 +245,7 @@ const useStyles = makeStyles((c) => ({
   switch: { alignItems: "center", paddingVertical: 12, minHeight: 44 },
   forgot: { alignSelf: "flex-end", minHeight: 32, justifyContent: "center" },
   forgotText: { color: c.brandTertiary, fontWeight: "600", fontSize: 13 },
-  formTitle: { fontSize: 22, fontWeight: "800", color: c.onSurface },
+  formTitle: { fontSize: 22, fontFamily: fonts.display, color: c.onSurface },
   formText: { fontSize: 14, lineHeight: 20, color: c.muted },
   codeInput: { fontSize: 22, letterSpacing: 6, textAlign: "center" },
   switchText: { color: c.brandTertiary, fontWeight: "600", fontSize: 14 },

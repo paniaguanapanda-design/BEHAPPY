@@ -13,7 +13,7 @@ import { useAuth } from "@/src/auth";
 import { captionFor, tradesLabel, useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar, Button, Loading, SectionTitle, Stars, VerifiedBadge } from "@/src/ui";
 import { ReportSheet } from "@/src/ReportSheet";
 
@@ -269,11 +269,11 @@ const useStyles = makeStyles((c) => ({
   back: { position: "absolute", left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: c.scrim, alignItems: "center", justifyContent: "center" },
   heroContent: { flexDirection: "row", alignItems: "flex-end", gap: 16, padding: 24 },
   avatarRing: { borderWidth: 3, borderColor: c.onSurfaceInverse, borderRadius: 44 },
-  name: { color: c.onSurfaceInverse, fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
+  name: { color: c.onSurfaceInverse, fontSize: 26, fontFamily: fonts.display, letterSpacing: -0.5 },
   heroSub: { color: c.onSurfaceInverse, opacity: 0.85, fontSize: 14 },
   stats: { flexDirection: "row", margin: 16, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
   stat: { flex: 1, alignItems: "center", gap: 4 },
-  statVal: { fontSize: 20, fontWeight: "800", color: c.onSurface },
+  statVal: { fontSize: 20, fontFamily: fonts.display, color: c.onSurface },
   statLabel: { fontSize: 11, color: c.muted, fontWeight: "600", textAlign: "center" },
   content: { paddingHorizontal: 16, gap: 32 },
   body: { fontSize: 15, lineHeight: 22, color: c.onSurfaceTertiary },
@@ -292,11 +292,11 @@ const useStyles = makeStyles((c) => ({
   recPill: { backgroundColor: c.brandSecondary, padding: 6, borderRadius: 999 },
   cta: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border, overflow: "hidden" },
   iconBtn: { width: 50, height: 50, borderRadius: 12, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
-  chatText: { color: c.brandPrimary, fontWeight: "700", fontSize: 16 },
+  chatText: { color: c.brandTertiary, fontWeight: "700", fontSize: 16 },
   backdrop: { flex: 1, backgroundColor: c.scrim },
   sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 12 },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: c.borderStrong, marginBottom: 4 },
-  sheetTitle: { fontSize: 22, fontWeight: "800", color: c.onSurface },
+  sheetTitle: { fontSize: 22, fontFamily: fonts.display, color: c.onSurface },
   label: { fontSize: 13, fontWeight: "600", color: c.muted },
   input: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: c.onSurface },
   recRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
