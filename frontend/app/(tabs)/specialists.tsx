@@ -103,7 +103,7 @@ export default function Specialists() {
           )
         }
         renderItem={({ item, index }) => (
-          <Animated.View entering={FadeInDown.delay(index * 50).duration(350)}>
+          <Animated.View entering={FadeInDown.delay(Math.min(index, 6) * 40).duration(250)}>
             <Pressable
               testID={`specialist-card-${item.specialist_id}`}
               onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: item.specialist_id } })}

@@ -36,7 +36,7 @@ export default function Home() {
       <ScrollView
         contentContainerStyle={{ paddingBottom: bottomChrome + 24 }}
       >
-        <Animated.View entering={FadeInDown.duration(400)}>
+        <Animated.View entering={FadeInDown.duration(250)}>
           <Pressable testID="scan-problem-button" onPress={() => router.push("/scan")} style={({ pressed }) => [styles.hero, pressed && { transform: [{ scale: 0.98 }] }]}>
             <Image source={{ uri: HERO }} style={styles.abs} contentFit="cover" />
             <LinearGradient colors={["transparent", colors.surfaceInverse]} style={styles.abs} />
@@ -59,7 +59,7 @@ export default function Home() {
           </Pressable>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(100).duration(400)}>
+        <Animated.View entering={FadeInDown.delay(60).duration(250)}>
           <Pressable testID="gallery-upload-button" onPress={() => pickFromGallery()} style={styles.galleryBtn}>
             <Ionicons name="images-outline" size={20} color={colors.brandPrimary} />
             <Text style={styles.galleryText}>{t("gallery_cta")}</Text>

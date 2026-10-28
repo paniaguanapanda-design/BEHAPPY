@@ -29,8 +29,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {toast && (
         <Animated.View
           key={toast.id}
-          entering={FadeInUp}
-          exiting={FadeOutUp}
+          entering={FadeInUp.duration(220)}
+          exiting={FadeOutUp.duration(150)}
           pointerEvents="none"
           style={[styles.wrap, { top: insets.top + 8 }]}
         >
