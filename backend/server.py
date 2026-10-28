@@ -996,7 +996,7 @@ async def add_review(sid: str, body: ReviewIn, request: Request):
 
 # ---------------- Moderation: reports and blocks ----------------
 REPORT_TARGETS = {"message", "review", "portfolio", "specialist", "user", "store"}
-REPORT_REASONS = {"spam", "inappropriate", "harassment", "fraud", "other"}
+REPORT_REASONS = {"spam", "inappropriate", "harassment", "fraud", "other", "not_exists", "not_store", "wrong_info"}
 
 
 class ReportIn(BaseModel):

@@ -156,7 +156,7 @@ async def test_three_reports_hide_store(api, world):
     sid, _ = await apply_and_confirm(api, world)
     for i in range(3):
         h = await register(api, f"cliente{i}@example.com")
-        r = await api.post("/api/reports", headers=h, json={"target_type": "store", "target_id": sid, "reason": "fraud"})
+        r = await api.post("/api/reports", headers=h, json={"target_type": "store", "target_id": sid, "reason": "not_store"})
         assert r.status_code == 200
         if i < 2:
             assert len(await nearby(api)) == 1

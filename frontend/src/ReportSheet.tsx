@@ -15,9 +15,20 @@ type Props = {
   targetId: string;
   blockUserId?: string;
   onBlocked?: () => void;
+  reasons?: Reason[];
 };
 
-const REASONS = [
+type Reason = { key: string; es: string; it: string };
+
+// Reasons for a hardware store on the map (3 reports from different users hide it until reviewed).
+export const STORE_REASONS: Reason[] = [
+  { key: "not_exists", es: "No existe o ha cerrado", it: "Non esiste o ha chiuso" },
+  { key: "not_store", es: "No es una ferretería", it: "Non è una ferramenta" },
+  { key: "wrong_info", es: "Dirección u horario incorrectos", it: "Indirizzo o orari sbagliati" },
+  { key: "other", es: "Otro motivo", it: "Altro motivo" },
+];
+
+const REASONS: Reason[] = [
   { key: "inappropriate", es: "Contenido inapropiado u ofensivo", it: "Contenuto inappropriato o offensivo" },
   { key: "harassment", es: "Acoso o amenazas", it: "Molestie o minacce" },
   { key: "fraud", es: "Estafa o engaño", it: "Truffa o inganno" },
@@ -25,7 +36,7 @@ const REASONS = [
   { key: "other", es: "Otro motivo", it: "Altro motivo" },
 ];
 
-export function ReportSheet({ visible, onClose, targetType, targetId, blockUserId, onBlocked }: Props) {
+export function ReportSheet({ visible, onClose, targetType, targetId, blockUserId, onBlocked, reasons = REASONS }: Props) {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -85,7 +96,7 @@ export function ReportSheet({ visible, onClose, targetType, targetId, blockUserI
         <View style={styles.handle} />
         <Text style={styles.title}>{it ? "Segnala contenuto" : "Reportar contenido"}</Text>
         <Text style={styles.sub}>{it ? "Perché lo stai segnalando?" : "¿Por qué lo reportas?"}</Text>
-        {REASONS.map((r) => (
+        {reasons.map((r) => (
           <Pressable key={r.key} testID={`report-reason-${r.key}`} disabled={busy} onPress={() => sendReport(r.key)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             <Ionicons name="flag-outline" size={18} color={colors.muted} />
             <Text style={styles.rowText}>{it ? r.it : r.es}</Text>
