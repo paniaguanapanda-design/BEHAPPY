@@ -84,6 +84,13 @@ const es = {
   send_quote: "Enviar presupuesto", quote: "Presupuesto", quote_price: "Precio (EUR)", quote_desc: "Qué incluye el trabajo", quote_time: "Tiempo estimado (ej. 2 días)",
   quote_sent: "Presupuesto enviado", quote_accepted: "Presupuesto aceptado", quote_rejected: "Presupuesto rechazado",
   qs_pending: "Pendiente", qs_accepted: "Aceptado", qs_rejected: "Rechazado", agreed_price: "Precio acordado", quotes: "Presupuestos",
+  stores_cta: "Dónde comprarlo: ferreterías cercanas", stores_title: "Ferreterías cercanas",
+  stores_loc_title: "Activa la ubicación", stores_loc_text: "La usamos solo para mostrarte las ferreterías más cercanas. No la guardamos.",
+  stores_allow: "Permitir ubicación", stores_empty: "Todavía no hay ferreterías inscritas cerca de ti.",
+  stores_empty_sub: "¿Conoces una? Puede inscribirse gratis en be-happyapp.com/ferramenta", stores_share: "Compartir el enlace",
+  stores_share_text: "Inscribe gratis tu ferretería en el mapa de Be Happy: https://www.be-happyapp.com/ferramenta",
+  stores_match: "Vende material de este tipo", stores_directions: "Cómo llegar", stores_error: "No pudimos cargar las ferreterías.",
+  stores_report: "Reportar ferretería", stores_map_hint: "Toca una ferretería para verla en la lista",
 };
 
 const it: typeof es = {
@@ -167,6 +174,13 @@ const it: typeof es = {
   send_quote: "Invia preventivo", quote: "Preventivo", quote_price: "Prezzo (EUR)", quote_desc: "Cosa include il lavoro", quote_time: "Tempo stimato (es. 2 giorni)",
   quote_sent: "Preventivo inviato", quote_accepted: "Preventivo accettato", quote_rejected: "Preventivo rifiutato",
   qs_pending: "In attesa", qs_accepted: "Accettato", qs_rejected: "Rifiutato", agreed_price: "Prezzo concordato", quotes: "Preventivi",
+  stores_cta: "Dove comprarlo: ferramenta vicine", stores_title: "Ferramenta vicine",
+  stores_loc_title: "Attiva la posizione", stores_loc_text: "La usiamo solo per mostrarti le ferramenta più vicine. Non la salviamo.",
+  stores_allow: "Consenti posizione", stores_empty: "Non ci sono ancora ferramenta iscritte vicino a te.",
+  stores_empty_sub: "Ne conosci una? Può iscriversi gratis su be-happyapp.com/ferramenta", stores_share: "Condividi il link",
+  stores_share_text: "Iscrivi gratis la tua ferramenta sulla mappa di Be Happy: https://www.be-happyapp.com/ferramenta",
+  stores_match: "Vende materiale di questo tipo", stores_directions: "Indicazioni", stores_error: "Non siamo riusciti a caricare le ferramenta.",
+  stores_report: "Segnala ferramenta", stores_map_hint: "Tocca una ferramenta per vederla nella lista",
 };
 
 export type TKey = keyof typeof es;

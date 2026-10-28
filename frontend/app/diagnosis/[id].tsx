@@ -158,6 +158,16 @@ export default function Diagnosis() {
                 </>
               )}
 
+              {materials.length + tools.length > 0 && (
+                <Button
+                  testID="stores-button"
+                  variant="secondary"
+                  icon="storefront-outline"
+                  title={t("stores_cta")}
+                  onPress={() => router.push({ pathname: "/stores", params: canHire ? { category: d.category } : {} })}
+                />
+              )}
+
               {steps.length > 0 && (
               <View style={{ gap: 12 }}>
                 <View style={styles.stepsHead}>
