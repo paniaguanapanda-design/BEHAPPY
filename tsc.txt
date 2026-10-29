@@ -1,0 +1,3 @@
+src/push.ts(52,24): error TS2345: Argument of type '(ok: boolean) => false | Promise<void>' is not assignable to parameter of type '(value: boolean) => void | PromiseLike<void>'.
+  Type 'false | Promise<void>' is not assignable to type 'void | PromiseLike<void>'.
+    Type 'boolean' is not assignable to type 'void | PromiseLike<void>'.
