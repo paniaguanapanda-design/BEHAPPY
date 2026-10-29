@@ -4,6 +4,7 @@ import { storage } from "@/src/utils/storage";
 export type Lang = "es" | "it";
 
 const es = {
+  profile_active: "Perfil activo", profile_active_until: "Hasta el", profile_inactive: "Perfil no activo",
   new_badge: "NUEVO", this_week: "Esta semana", details: "Detalles", stat_views: "visitas al perfil", stat_clients: "clientes te escribieron", stat_response: "tiempo de respuesta",
   available_now: "Disponible ahora", available_now_plural: "Disponibles ahora", out_of_hours: "Fuera de horario", edit_profile_short: "Editar perfil",
   zone_hours: "Zona y horario", zone_not_set: "Zona sin configurar", zone_where: "Dónde trabajas", zone_move_map: "Mueve el mapa para elegir el centro de tu zona.",
@@ -45,7 +46,7 @@ const es = {
   pro_b2_t: "Clientes cerca de ti", pro_b2: "Empezamos en Turín: te encuentra quien necesita ayuda en tu zona.",
   pro_b3_t: "Perfil verificado", pro_b3: "Sube un documento y obtén la insignia de especialista verificado.",
   pro_b4_t: "Contacto directo", pro_b4: "Respondes por el chat de la app o por WhatsApp.",
-  pro_how: "Cómo empezar", pro_s1: "Crea tu cuenta", pro_s2: "Completa tu perfil: oficio, foto y teléfono", pro_s3: "Activa la membresía y responde a tus clientes",
+  pro_how: "Cómo empezar", pro_s1: "Crea tu cuenta", pro_s2: "Completa tu perfil: oficio, foto y teléfono", pro_s3: "Responde a los clientes de tu zona",
   pro_price_t: "Membresía", pro_price: "19,99 € al mes o 199,99 € al año (2 meses gratis).",
   pro_prereg: "¿Te preinscribiste en be-happyapp.com? Usa el mismo correo: tu mes gratis se activa solo.",
   pro_cta: "Crear mi perfil de especialista", pro_have_account: "Ya tengo cuenta: iniciar sesión",
@@ -115,12 +116,12 @@ const es = {
   monthly: "Mensual", yearly: "Anual", per_month: "/mes", per_year: "/año", two_months_free: "2 meses gratis",
   pay_card: "Pagar con tarjeta", pay_card_sub: "Pago seguro con Stripe. Renovación manual al final del periodo.",
   pay_inapp: "Suscribirme en la app", pay_inapp_sub: "App Store / Google Play. Renovación automática.",
-  restore: "Restaurar compras", simulated: "Modo prueba (simulado)", active_until: "Activa hasta", mb_active: "Membresía activa", mb_free_month: "Mes gratis de bienvenida", profile_photo: "Foto de perfil", profile_photo_req: "Añade una foto tuya: es obligatoria para aparecer.", available: "Disponible", may_reply_later: "Puede tardar en responder", reply_needs_membership: "Tienes mensajes de clientes. Activa tu membresía para responder.", portfolio_needs_membership: "Activa tu membresía para publicar fotos de tus trabajos.",
+  restore: "Restaurar compras", simulated: "Modo prueba (simulado)", active_until: "Activa hasta", mb_active: "Membresía activa", mb_free_month: "Mes gratis de bienvenida", profile_photo: "Foto de perfil", profile_photo_req: "Añade una foto tuya: es obligatoria para aparecer.", available: "Disponible", may_reply_later: "Puede tardar en responder", reply_needs_membership: "Tu perfil no está activo: por ahora no puedes responder.", portfolio_needs_membership: "Podrás publicar fotos de tus trabajos cuando tu perfil esté activo.",
   mb_inactive: "Sin membresía activa", mb_checking: "Verificando pago…", mb_paid: "¡Pago confirmado! Tu membresía está activa.",
   mb_pending_pay: "Completa el pago en la ventana de Stripe y vuelve aquí.", check_payment: "Ya he pagado, verificar",
   mb_unavailable: "Las opciones de suscripción no están disponibles ahora. Inténtalo más tarde.",
   confirm_purchase: "Confirmar compra", confirm_purchase_text: "Compra de prueba (simulada) en la Test Store de RevenueCat. No se cobrará dinero real.",
-  confirm: "Confirmar", hidden_profile: "Los clientes ya ven tu perfil y pueden escribirte. Activa tu membresía para responder, publicar fotos de tus trabajos y cerrar trabajos.",
+  confirm: "Confirmar", hidden_profile: "Tu perfil aún no está activo: los clientes no te ven en la lista y no puedes responder a los mensajes.",
   activate_membership: "Activar membresía", not_available: "Este especialista no está disponible ahora.", need_profile_first: "Primero crea tu perfil de especialista.",
   send_quote: "Enviar presupuesto", quote: "Presupuesto", quote_price: "Precio (EUR)", quote_desc: "Qué incluye el trabajo", quote_time: "Tiempo estimado (ej. 2 días)",
   quote_sent: "Presupuesto enviado", quote_accepted: "Presupuesto aceptado", quote_rejected: "Presupuesto rechazado",
@@ -136,6 +137,7 @@ const es = {
 };
 
 const it: typeof es = {
+  profile_active: "Profilo attivo", profile_active_until: "Fino al", profile_inactive: "Profilo non attivo",
   new_badge: "NUOVO", this_week: "Questa settimana", details: "Dettagli", stat_views: "visite al profilo", stat_clients: "clienti ti hanno scritto", stat_response: "tempo di risposta",
   available_now: "Disponibile ora", available_now_plural: "Disponibili ora", out_of_hours: "Fuori orario", edit_profile_short: "Modifica profilo",
   zone_hours: "Zona e orari", zone_not_set: "Zona non impostata", zone_where: "Dove lavori", zone_move_map: "Sposta la mappa per scegliere il centro della tua zona.",
@@ -177,7 +179,7 @@ const it: typeof es = {
   pro_b2_t: "Clienti vicino a te", pro_b2: "Partiamo da Torino: ti trova chi ha bisogno nella tua zona.",
   pro_b3_t: "Profilo verificato", pro_b3: "Carica un documento e ottieni il badge di specialista verificato.",
   pro_b4_t: "Contatto diretto", pro_b4: "Rispondi dalla chat dell'app o su WhatsApp.",
-  pro_how: "Come iniziare", pro_s1: "Crea il tuo account", pro_s2: "Completa il profilo: mestiere, foto e telefono", pro_s3: "Attiva l'abbonamento e rispondi ai clienti",
+  pro_how: "Come iniziare", pro_s1: "Crea il tuo account", pro_s2: "Completa il profilo: mestiere, foto e telefono", pro_s3: "Rispondi ai clienti della tua zona",
   pro_price_t: "Abbonamento", pro_price: "19,99 € al mese o 199,99 € all'anno (2 mesi gratis).",
   pro_prereg: "Ti sei pre-registrato su be-happyapp.com? Usa la stessa email: il mese gratis si attiva da solo.",
   pro_cta: "Crea il mio profilo da specialista", pro_have_account: "Ho già un account: accedi",
@@ -247,12 +249,12 @@ const it: typeof es = {
   monthly: "Mensile", yearly: "Annuale", per_month: "/mese", per_year: "/anno", two_months_free: "2 mesi gratis",
   pay_card: "Paga con carta", pay_card_sub: "Pagamento sicuro con Stripe. Rinnovo manuale a fine periodo.",
   pay_inapp: "Abbonati nell'app", pay_inapp_sub: "App Store / Google Play. Rinnovo automatico.",
-  restore: "Ripristina acquisti", simulated: "Modalità test (simulata)", active_until: "Attivo fino al", mb_active: "Abbonamento attivo", mb_free_month: "Mese gratis di benvenuto", profile_photo: "Foto profilo", profile_photo_req: "Aggiungi una tua foto: è obbligatoria per comparire.", available: "Disponibile", may_reply_later: "Potrebbe rispondere più tardi", reply_needs_membership: "Hai messaggi dei clienti. Attiva l'abbonamento per rispondere.", portfolio_needs_membership: "Attiva l'abbonamento per pubblicare le foto dei tuoi lavori.",
+  restore: "Ripristina acquisti", simulated: "Modalità test (simulata)", active_until: "Attivo fino al", mb_active: "Abbonamento attivo", mb_free_month: "Mese gratis di benvenuto", profile_photo: "Foto profilo", profile_photo_req: "Aggiungi una tua foto: è obbligatoria per comparire.", available: "Disponibile", may_reply_later: "Potrebbe rispondere più tardi", reply_needs_membership: "Il tuo profilo non è attivo: per ora non puoi rispondere.", portfolio_needs_membership: "Potrai pubblicare le foto dei tuoi lavori quando il tuo profilo sarà attivo.",
   mb_inactive: "Nessun abbonamento attivo", mb_checking: "Verifica del pagamento…", mb_paid: "Pagamento confermato! Il tuo abbonamento è attivo.",
   mb_pending_pay: "Completa il pagamento nella finestra di Stripe e torna qui.", check_payment: "Ho pagato, verifica",
   mb_unavailable: "Le opzioni di abbonamento non sono disponibili ora. Riprova più tardi.",
   confirm_purchase: "Conferma acquisto", confirm_purchase_text: "Acquisto di prova (simulato) nel Test Store di RevenueCat. Nessun addebito reale.",
-  confirm: "Conferma", hidden_profile: "I clienti vedono già il tuo profilo e possono scriverti. Attiva l'abbonamento per rispondere, pubblicare le foto dei lavori e chiudere i lavori.",
+  confirm: "Conferma", hidden_profile: "Il tuo profilo non è ancora attivo: i clienti non ti vedono nella lista e non puoi rispondere ai messaggi.",
   activate_membership: "Attiva abbonamento", not_available: "Questo specialista non è disponibile ora.", need_profile_first: "Prima crea il tuo profilo da specialista.",
   send_quote: "Invia preventivo", quote: "Preventivo", quote_price: "Prezzo (EUR)", quote_desc: "Cosa include il lavoro", quote_time: "Tempo stimato (es. 2 giorni)",
   quote_sent: "Preventivo inviato", quote_accepted: "Preventivo accettato", quote_rejected: "Preventivo rifiutato",

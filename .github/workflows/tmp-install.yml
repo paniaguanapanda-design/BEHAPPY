@@ -1,0 +1,26 @@
+name: tmp remove purchases
+on:
+  push:
+    branches: [app-sin-pagos]
+    paths: [".github/workflows/tmp-install.yml"]
+permissions:
+  contents: write
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: yarn remove react-native-purchases expo-device --ignore-scripts
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git rm -q ../.github/workflows/tmp-install.yml
+          git add package.json yarn.lock
+          git commit -m "Quita react-native-purchases y expo-device"
+          git push

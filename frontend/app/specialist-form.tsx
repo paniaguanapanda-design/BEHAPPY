@@ -194,7 +194,6 @@ export default function SpecialistForm() {
             {!s.membership_active && (
               <View style={styles.mbBanner} testID="form-membership-banner">
                 <Text style={styles.hint}>{t("hidden_profile")}</Text>
-                <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="form-activate-membership-button" />
               </View>
             )}
             <View style={{ marginTop: 24, gap: 12 }}>

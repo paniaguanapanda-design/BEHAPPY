@@ -84,12 +84,6 @@ export default function Pro() {
             ))}
           </View>
 
-          <View style={styles.price}>
-            <Text style={styles.priceTitle}>{t("pro_price_t")}</Text>
-            <Text style={styles.priceText}>{t("pro_price")}</Text>
-            <Text style={styles.prereg}>{t("pro_prereg")}</Text>
-          </View>
-
           <Button testID="pro-start" title={t("pro_cta")} icon="briefcase-outline" onPress={start} />
           <Pressable
             testID="pro-have-account"

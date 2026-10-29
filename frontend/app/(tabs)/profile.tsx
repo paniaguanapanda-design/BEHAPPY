@@ -76,10 +76,9 @@ export default function Profile() {
   const seenZone = useSeen("pro_zone");
   const seenReplies = useSeen("pro_replies");
   const seenAlerts = useSeen("pro_alerts");
-  const seenFeatured = useSeen("pro_featured");
   useFocusEffect(
     useCallback(() => {
-      [seenStats, seenZone, seenReplies, seenAlerts, seenFeatured].forEach((x) => x.reload());
+      [seenStats, seenZone, seenReplies, seenAlerts].forEach((x) => x.reload());
       if (isSpec) {
         stats.refetch();
         settings.refetch();
@@ -142,7 +141,7 @@ export default function Profile() {
               <View style={[styles.avail, !sp?.available_now && styles.availOff]} testID="profile-availability">
                 <View style={[styles.availDot, !sp?.available_now && styles.availDotOff]} />
                 <Text style={[styles.availText, !sp?.available_now && styles.availTextOff]}>
-                  {sp?.available_now ? t("available_now") : sp && !sp.membership_active ? t("mb_inactive") : t("out_of_hours")}
+                  {sp?.available_now ? t("available_now") : sp && !sp.membership_active ? t("profile_inactive") : t("out_of_hours")}
                 </Text>
               </View>
             </View>
@@ -164,7 +163,13 @@ export default function Profile() {
           </View>
         )}
 
-        {isSpec && (
+        {isSpec && sp && !sp.membership_active ? (
+          <View style={styles.inactiveNote} testID="profile-inactive-note">
+            <Text style={styles.inactiveText}>{t("hidden_profile")}</Text>
+          </View>
+        ) : null}
+
+        {isSpec && sp?.membership_active && (
           <View style={{ gap: 10 }}>
             <View style={styles.weekHead}>
               <View style={styles.rowTitleLine}>
@@ -237,26 +242,19 @@ export default function Profile() {
               />
             </View>
             <View style={styles.group}>
-              <Row
-                testID="membership-row"
-                icon="ribbon-outline" emoji="🏅"
-                title={t("membership")}
-                sub={membership.data ? (membership.data.active ? `${t("active_until")} ${fmtDate(membership.data.expires_at!, lang)}` : t("mb_inactive")) : undefined}
-                onPress={() => router.push("/membership")}
-              />
-              <View style={styles.sep} />
-              <Row
-                testID="featured-row"
-                icon="star-outline" emoji="⭐"
-                title={t("featured_title")}
-                sub={
-                  st?.featured_until
-                    ? `${t("featured_until")} ${fmtDate(st.featured_until, lang)}`
-                    : t("featured_sub").replace("{trade}", t(`pro_cats_${(sp?.categories || ["plumbing"])[0]}`))
-                }
-                isNew={seenFeatured.isNew}
-                onPress={() => router.push("/pro-featured")}
-              />
+              <View style={styles.row} testID="profile-status-row">
+                <View style={[styles.rowIcon, !sp?.membership_active && { backgroundColor: colors.surfaceTertiary }]}>
+                  <Text style={styles.emoji}>{sp?.membership_active ? "✅" : "⏸️"}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>{sp?.membership_active ? t("profile_active") : t("profile_inactive")}</Text>
+                  {sp?.membership_active && membership.data?.expires_at ? (
+                    <Text style={styles.rowSub}>
+                      {t("profile_active_until")} {fmtDate(membership.data.expires_at, lang)}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
             </View>
           </>
         ) : null}
@@ -346,6 +344,8 @@ const useStyles = makeStyles((c) => ({
   rowIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   rowTitle: { fontSize: 16, fontWeight: "600", color: c.onSurface, flexShrink: 1 },
   emoji: { fontSize: 18 },
+  inactiveNote: { backgroundColor: c.brandSecondary, borderWidth: 1, borderColor: "#FFD2B0", borderRadius: 18, padding: 14 },
+  inactiveText: { fontSize: 14, lineHeight: 20, color: c.onSurface },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   avail: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "#E7F6EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginTop: 4 },
   availOff: { backgroundColor: c.surfaceTertiary },
