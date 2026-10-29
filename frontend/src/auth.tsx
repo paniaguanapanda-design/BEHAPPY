@@ -4,6 +4,8 @@ import { api, setToken, setUnauthorizedHandler } from "@/src/api";
 import { storage } from "@/src/utils/storage";
 
 const TOKEN_KEY = "auth_token";
+// Last signed-in user, so the app opens at once even while the server is waking up.
+const USER_KEY = "auth_user";
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
 export type User = {
@@ -32,8 +34,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const remember = useCallback((u: User) => storage.setItem(USER_KEY, JSON.stringify(u)), []);
+
   const clear = useCallback(async () => {
     await storage.secureRemove(TOKEN_KEY);
+    await storage.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
   }, []);
@@ -42,7 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await storage.secureSet(TOKEN_KEY, res.session_token);
     setToken(res.session_token);
     setUser(res.user);
-  }, []);
+    remember(res.user);
+  }, [remember]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -53,17 +59,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const stored = await storage.secureGet(TOKEN_KEY, null);
         if (typeof stored === "string" && stored) {
           setToken(stored);
+          let cached: User | null = null;
           try {
-            setUser(await api<User>("/auth/me"));
-          } catch {
-            await clear();
+            const raw = await storage.getItem(USER_KEY, null);
+            cached = typeof raw === "string" ? (JSON.parse(raw) as User) : null;
+          } catch {}
+          if (cached) {
+            // Open now with the remembered user and confirm with the server in the background.
+            // A rejected session (401) still signs out through the unauthorized handler.
+            setUser(cached);
+            setLoading(false);
+            api<User>("/auth/me")
+              .then((fresh) => {
+                setUser(fresh);
+                remember(fresh);
+              })
+              .catch(() => {});
+          } else {
+            try {
+              const fresh = await api<User>("/auth/me");
+              setUser(fresh);
+              remember(fresh);
+            } catch {
+              await clear();
+            }
           }
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, [clear]);
+  }, [clear, remember]);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -119,8 +145,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [clear]);
 
   const refreshUser = useCallback(async () => {
-    setUser(await api<User>("/auth/me"));
-  }, []);
+    const fresh = await api<User>("/auth/me");
+    setUser(fresh);
+    remember(fresh);
+  }, [remember]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, resetPassword, logout, refreshUser }}>
