@@ -615,7 +615,8 @@ async def get_file(path: str, request: Request):
     if not rec:
         raise HTTPException(404, "File not found")
     if rec.get("owner_id") != user["user_id"]:
-        in_portfolio = await db.specialists.find_one({"$or": [{"portfolio.image": path}, {"avatar": path}]}, {"_id": 1})
+        in_portfolio = await db.specialists.find_one({"$or": [{"portfolio.image": path}, {"avatar": path}]}, {"_id": 1}) \
+            or await db.conversations.find_one({"diagnosis.image_path": path, "participants": user["user_id"]}, {"_id": 1})
         if not in_portfolio:
             raise HTTPException(404, "File not found")
     data, ct = await run_in_threadpool(get_object, path)
@@ -683,6 +684,8 @@ class DiagnoseIn(BaseModel):
     image_base64: str = Field(max_length=14_000_000)
     language: str = "es"
     note: Optional[str] = Field(default=None, max_length=500)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)  # solo si el usuario ya dio permiso de ubicacion
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
 
 MAX_SIDE = 1024
 
@@ -741,6 +744,10 @@ async def diagnose(body: DiagnoseIn, request: Request):
     doc.pop("_id", None)
     await db.diagnoses.insert_one(doc)
     doc.pop("_id", None)
+    if body.lat is not None and body.lng is not None:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_loc": {
+            "lat": round(body.lat, 3), "lng": round(body.lng, 3), "at": iso(now())}}})
+        asyncio.create_task(notify_nearby_diagnosis(doc, body.lat, body.lng))
     return doc
 
 
@@ -809,9 +816,16 @@ def membership_active(s: dict) -> bool:
     return bool(exp) and exp > iso(now())
 
 
-async def specialist_out(s: dict) -> dict:
-    s.pop("verification_document", None)
-    s.pop("document_number", None)
+PRIVATE_SPEC_FIELDS = ("verification_document", "document_number", "quick_replies", "alerts", "client_reports",
+                       "resp_avg_min", "resp_count")
+
+
+async def specialist_out(s: dict, origin: Optional[tuple] = None) -> dict:
+    s.update(public_pro_fields(s, origin))
+    for k in PRIVATE_SPEC_FIELDS:
+        s.pop(k, None)
+    z = s.get("zone")
+    s["zone"] = {"label": z.get("label"), "radius_km": z.get("radius_km")} if z else None
     s["membership_active"] = membership_active(s)
     if (s.get("reviews_count") or 0) < 3:
         s["rating_avg"] = None  # average only shown from 3 ratings
@@ -871,10 +885,16 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
 
 
 @api.get("/specialists")
-async def list_specialists(request: Request, category: Optional[str] = None, q: Optional[str] = None):
+async def list_specialists(request: Request, category: Optional[str] = None, q: Optional[str] = None,
+                           lat: Optional[float] = None, lng: Optional[float] = None, available: bool = False):
     user = await current_user(request)
-    # Salen todos los especialistas con foto de perfil; los que tienen membresía activa ("disponibles") primero
-    flt = {"avatar": {"$type": "string"}}
+    origin = (lat, lng) if lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180 else None
+    if origin:
+        await db.users.update_one({"user_id": user["user_id"]},
+                                  {"$set": {"last_loc": {"lat": round(lat, 3), "lng": round(lng, 3), "at": iso(now())}}})
+    # Salen los especialistas con foto de perfil que trabajan en la zona del cliente: destacados, disponibles ahora y
+    # con membresia primero. Los ocultos por reportes no salen.
+    flt = {"avatar": {"$type": "string"}, "hidden": {"$ne": True}}
     if category and category != "all":
         flt["categories"] = category
     if q:
@@ -882,8 +902,23 @@ async def list_specialists(request: Request, category: Optional[str] = None, q: 
     items = await db.specialists.find(flt, {"_id": 0, "verification_document": 0, "document_number": 0}) \
         .sort([("verified", -1), ("created_at", 1)]).to_list(500)
     hidden = await hidden_user_ids(user["user_id"])
-    out = [await specialist_out(it) for it in items if it["user_id"] not in hidden]
-    out.sort(key=lambda it: not it["membership_active"])  # orden estable: disponibles primero
+    if origin:
+        items = [it for it in items if km_between(origin, spec_zone(it)[0]) <= spec_zone(it)[1]]
+    out = [await specialist_out(it, origin) for it in items if it["user_id"] not in hidden]
+    if available:
+        out = [it for it in out if it["available_now"]]
+    # Como mucho 3 destacados por oficio (los que lo compraron antes)
+    featured = sorted([it for it in out if it["featured"]], key=lambda it: it.get("featured_until") or "")
+    seen: dict = {}
+    for it in featured:
+        cat = (it.get("categories") or [""])[0]
+        seen[cat] = seen.get(cat, 0) + 1
+        if seen[cat] > FEATURED_MAX_PER_TRADE:
+            it["featured"] = False
+    out.sort(key=lambda it: (not it["featured"], not it["available_now"], not it["membership_active"],
+                             it.get("distance_km") if it.get("distance_km") is not None else 999))
+    for it in out:
+        it.pop("featured_until", None)
     return out
 
 
@@ -911,7 +946,8 @@ async def get_specialist(sid: str, request: Request):
     s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0})
     if not s:
         raise HTTPException(404, "Not found")
-    out = await specialist_out(s)
+    await record_view(s, user)
+    out = await specialist_out(dict(s))
     out["can_review"] = await can_review(user, s)
     return out
 
@@ -996,7 +1032,8 @@ async def add_review(sid: str, body: ReviewIn, request: Request):
 
 # ---------------- Moderation: reports and blocks ----------------
 REPORT_TARGETS = {"message", "review", "portfolio", "specialist", "user", "store"}
-REPORT_REASONS = {"spam", "inappropriate", "harassment", "fraud", "other", "not_exists", "not_store", "wrong_info"}
+REPORT_REASONS = {"spam", "inappropriate", "harassment", "fraud", "other", "not_exists", "not_store", "wrong_info",
+                  "no_show", "broke_agreement", "overcharged", "bad_work"}
 
 
 class ReportIn(BaseModel):
@@ -1033,6 +1070,8 @@ async def create_report(body: ReportIn, request: Request):
     logger.warning("REPORT %s %s reason=%s by=%s", body.target_type, body.target_id, body.reason, user["user_id"])
     if body.target_type == "store":
         await store_reported(body.target_id, user["user_id"])
+    if body.target_type == "specialist":
+        await specialist_reported(body.target_id, user["user_id"], body.reason, body.details.strip())
     return {"ok": True}
 
 
@@ -1135,6 +1174,7 @@ class MessageIn(BaseModel):
 
 class ConversationIn(BaseModel):
     specialist_id: str
+    diagnosis_id: Optional[str] = Field(default=None, max_length=60)
 
 
 async def get_or_create_conversation(client_user: dict, spec: dict) -> dict:
@@ -1167,6 +1207,7 @@ async def push_message(conv: dict, sender: dict, text: str, kind: str = "text", 
     await db.conversations.update_one({"conversation_id": conv["conversation_id"]},
                                       {"$set": {"last_message": text[:120], "updated_at": msg["created_at"]},
                                        "$inc": {f"unread.{other}": 1}})
+    asyncio.create_task(after_message(conv, sender, msg))
     return msg
 
 
@@ -1179,7 +1220,13 @@ async def start_conversation(body: ConversationIn, request: Request):
     if await blocked_between(user["user_id"], spec["user_id"]):
         raise HTTPException(403, "No puedes contactar a este usuario")
     # Cualquier cliente puede escribir; el especialista necesita membresía para responder
-    return await get_or_create_conversation(user, spec)
+    conv = await get_or_create_conversation(user, spec)
+    if body.diagnosis_id:
+        d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id, "user_id": user["user_id"]}, {"_id": 0})
+        if d:
+            conv["diagnosis"] = diagnosis_summary(d)
+            await db.conversations.update_one({"conversation_id": conv["conversation_id"]}, {"$set": {"diagnosis": conv["diagnosis"]}})
+    return conv
 
 
 @api.get("/conversations")
@@ -1205,6 +1252,24 @@ async def get_conversation(cid: str, request: Request):
                                                                                      "avatar": 1}) or {}
     conv["specialist_can_reply"] = membership_active(spec)
     conv["specialist_avatar"] = spec.get("avatar") or conv.get("specialist_avatar")
+    conv["review_prompt"] = await review_prompt_for(conv, user)
+    d = conv.get("diagnosis")
+    if d and d.get("materials") and d.get("category") in CATEGORIES:
+        # Ferreterias cerca: del cliente (su ultima posicion) o de la zona del especialista
+        if user["user_id"] == conv["client_id"] and user.get("last_loc"):
+            center = (user["last_loc"]["lat"], user["last_loc"]["lng"])
+        else:
+            full = await db.specialists.find_one({"specialist_id": conv["specialist_id"]}, {"_id": 0, "zone": 1}) or {}
+            center = spec_zone(full)[0]
+        try:
+            conv["stores_nearby"] = len([x async for x in db.stores.aggregate([
+                {"$geoNear": {"near": {"type": "Point", "coordinates": [center[1], center[0]]}, "distanceField": "d",
+                              "maxDistance": 10000, "spherical": True,
+                              "query": {"status": "approved", "hidden": {"$ne": True}, "categories": d["category"]}}},
+                {"$limit": 50}, {"$project": {"_id": 1}}])])
+        except Exception:
+            conv["stores_nearby"] = None
+        conv["stores_center"] = {"lat": center[0], "lng": center[1]}
     return conv
 
 
@@ -1988,6 +2053,491 @@ async def admin_store_digest(x_admin_token: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+# ---------------- Herramientas para especialistas ----------------
+# Zona y horario, estadisticas, avisos push, respuestas rapidas, perfil destacado y reportes de clientes.
+# BeHappy solo acerca el especialista al cliente: precios y acuerdos los pactan ellos, nosotros no intervenimos.
+import math
+from zoneinfo import ZoneInfo
+
+ROME = ZoneInfo("Europe/Rome")
+TURIN = (45.0703, 7.6869)
+DEFAULT_RADIUS_KM = 15
+SPEC_REPORTS_TO_HIDE = 3
+SPEC_REPORT_REASONS = {"no_show", "broke_agreement", "overcharged", "bad_work", "harassment", "fraud"}
+FEATURED_MAX_PER_TRADE = 3
+FEATURED_DAYS = {"7": 7, "30": 30}
+REVIEW_PROMPT_DAYS = 2
+NEARBY_PUSH_PER_DAY = 5
+CAT_NAME = {
+    "it": {"plumbing": "idraulica", "electrical": "elettricità", "hvac": "climatizzazione", "masonry": "muratura",
+           "carpentry": "falegnameria"},
+    "es": {"plumbing": "fontanería", "electrical": "electricidad", "hvac": "climatización", "masonry": "albañilería",
+           "carpentry": "carpintería"},
+}
+DEFAULT_QUICK_REPLIES = {
+    "it": ["Posso passare domani mattina", "Mi mandi una foto da vicino?", "Qual è l'indirizzo?",
+           "Oggi pomeriggio sono libero", "Ci sentiamo per telefono?"],
+    "es": ["Puedo pasar mañana por la mañana", "¿Me mandas una foto de cerca?", "¿Cuál es la dirección?",
+           "Esta tarde estoy libre", "¿Hablamos por teléfono?"],
+}
+
+
+def km_between(a: tuple, b: tuple) -> float:
+    lat1, lng1, lat2, lng2 = map(math.radians, (a[0], a[1], b[0], b[1]))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lng2 - lng1) / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(h))
+
+
+def spec_zone(s: dict) -> tuple:
+    z = s.get("zone") or {}
+    if z.get("lat") is not None and z.get("lng") is not None:
+        return (z["lat"], z["lng"]), float(z.get("radius_km") or DEFAULT_RADIUS_KM)
+    return TURIN, float(DEFAULT_RADIUS_KM)
+
+
+def _hm(v: str) -> int:
+    h, m = v.split(":")
+    return int(h) * 60 + int(m)
+
+
+def in_schedule(s: dict, at: Optional[datetime] = None) -> bool:
+    sch = s.get("schedule")
+    if not sch:
+        return True  # sin horario guardado: disponible si tiene la membresia activa (como antes)
+    t = (at or now()).astimezone(ROME)
+    if t.isoweekday() not in (sch.get("days") or []):
+        return False
+    mins = t.hour * 60 + t.minute
+    return _hm(sch.get("from", "08:00")) <= mins < _hm(sch.get("to", "19:00"))
+
+
+def featured_active(s: dict) -> bool:
+    return bool(s.get("featured_until")) and s["featured_until"] > iso(now())
+
+
+def schedule_label(s: dict, lang: str) -> str:
+    sch = s.get("schedule")
+    if not sch or not sch.get("days"):
+        return ""
+    names = {"it": ["lun", "mar", "mer", "gio", "ven", "sab", "dom"], "es": ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]}[lang]
+    days = sorted(sch["days"])
+    if days == list(range(days[0], days[-1] + 1)) and len(days) > 2:
+        d = f"{names[days[0] - 1]}–{names[days[-1] - 1]}"
+    else:
+        d = ", ".join(names[x - 1] for x in days)
+    fmt = lambda v: v[:-3] if v.endswith(":00") else v.replace(":", ".")
+    hours = f"{fmt(sch.get('from', '08:00')).lstrip('0') or '0'}–{fmt(sch.get('to', '19:00')).lstrip('0') or '0'}"
+    return f"{d} {hours}"
+
+
+def public_pro_fields(s: dict, origin: Optional[tuple] = None) -> dict:
+    """Campos calculados que ven los clientes en el muro y en la ficha."""
+    active = membership_active(s)
+    center, radius = spec_zone(s)
+    out = {"available_now": active and in_schedule(s), "featured": active and featured_active(s),
+           "urgent": bool(s.get("urgent")), "zone_radius_km": radius,
+           "schedule_label_it": schedule_label(s, "it"), "schedule_label_es": schedule_label(s, "es"),
+           "response_min": s.get("resp_avg_min") if (s.get("resp_count") or 0) >= 3 else None}
+    if origin:
+        out["distance_km"] = round(km_between(origin, center), 1)
+    return out
+
+
+# --- Avisos push (Expo) ---
+class PushTokenIn(BaseModel):
+    token: str = Field(max_length=200)
+    lang: str = Field(default="it", max_length=5)
+
+
+@api.post("/push/token")
+async def save_push_token(body: PushTokenIn, request: Request):
+    user = await current_user(request)
+    if not body.token.startswith(("ExponentPushToken[", "ExpoPushToken[")):
+        raise HTTPException(400, "Invalid token")
+    await db.users.update_many({"push_tokens": body.token, "user_id": {"$ne": user["user_id"]}},
+                               {"$pull": {"push_tokens": body.token}})  # un telefono, una cuenta
+    await db.users.update_one({"user_id": user["user_id"]},
+                              {"$addToSet": {"push_tokens": body.token},
+                               "$set": {"lang": "es" if body.lang == "es" else "it"}})
+    return {"ok": True}
+
+
+async def send_push(user_id: str, title_by_lang: dict, body_by_lang: dict, data: dict) -> None:
+    try:
+        u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "push_tokens": 1, "lang": 1})
+        tokens = (u or {}).get("push_tokens") or []
+        if not tokens:
+            return
+        lang = (u or {}).get("lang") or "it"
+        msgs = [{"to": tk, "title": title_by_lang[lang], "body": body_by_lang[lang], "data": data, "sound": "default",
+                 "channelId": "default"} for tk in tokens]
+        async with httpx.AsyncClient(timeout=10) as hc:
+            r = await hc.post("https://exp.host/--/api/v2/push/send", json=msgs)
+        for tk, res in zip(tokens, (r.json().get("data") or []) if r.status_code == 200 else []):
+            if (res.get("details") or {}).get("error") == "DeviceNotRegistered":
+                await db.users.update_one({"user_id": user_id}, {"$pull": {"push_tokens": tk}})
+    except Exception as e:
+        logger.warning("push a %s no enviado: %s", user_id, e)
+
+
+def _quote(text: str, n: int = 80) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+async def notify_message(conv: dict, sender: dict, text: str, first_from_client: bool) -> None:
+    other = [p for p in conv["participants"] if p != sender["user_id"]][0]
+    data = {"type": "message", "conversation_id": conv["conversation_id"]}
+    name = sender["name"].split()[0] if sender.get("name") else ""
+    if first_from_client and other == conv.get("specialist_user_id"):
+        spec = await db.specialists.find_one({"specialist_id": conv["specialist_id"]}, {"_id": 0, "zone": 1}) or {}
+        loc = sender.get("last_loc")
+        dist = f" a {round(km_between((loc['lat'], loc['lng']), spec_zone(spec)[0]))} km" if loc else ""
+        title = {"it": f"Nuovo cliente{dist}", "es": f"Nuevo cliente{dist}"}
+        body = {"it": f"{name} ti ha scritto: «{_quote(text)}». Rispondi presto!",
+                "es": f"{name} te ha escrito: «{_quote(text)}». ¡Responde pronto!"}
+    else:
+        title = {"it": sender.get("name") or "BeHappy", "es": sender.get("name") or "BeHappy"}
+        body = {"it": _quote(text, 140), "es": _quote(text, 140)}
+    await send_push(other, title, body, data)
+
+
+async def reverse_place(lat: float, lng: float) -> Optional[str]:
+    try:
+        async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "BeHappy/1.0 (info@be-happyapp.com)"}) as hc:
+            r = await hc.get("https://nominatim.openstreetmap.org/reverse",
+                             params={"lat": lat, "lon": lng, "format": "jsonv2", "zoom": 14, "accept-language": "it"})
+        a = r.json().get("address") or {}
+        return a.get("suburb") or a.get("quarter") or a.get("neighbourhood") or a.get("city_district") or a.get("city")
+    except Exception:
+        return None
+
+
+async def notify_nearby_diagnosis(diag: dict, lat: float, lng: float) -> None:
+    """Una persona hizo una diagnosis: avisa a los especialistas de ese oficio que trabajan en esa zona."""
+    try:
+        cat = diag.get("category")
+        if cat not in CATEGORIES:
+            return
+        place = None
+        day = now().astimezone(ROME).strftime("%Y-%m-%d")
+        async for s in db.specialists.find({"categories": cat, "user_id": {"$ne": diag["user_id"]},
+                                            "membership_expires_at": {"$gt": iso(now())}, "hidden": {"$ne": True}},
+                                           {"_id": 0}):
+            alerts = s.get("alerts") or {}
+            if alerts.get("enabled") is False or cat not in (alerts.get("categories") or s.get("categories") or []):
+                continue
+            center, radius = spec_zone(s)
+            if km_between((lat, lng), center) > radius:
+                continue
+            quota = await db.push_quota.find_one_and_update({"specialist_id": s["specialist_id"], "day": day},
+                                                            {"$inc": {"count": 1}}, upsert=True, return_document=True)
+            if (quota or {}).get("count", 0) > NEARBY_PUSH_PER_DAY:
+                continue
+            if place is None:
+                place = await reverse_place(lat, lng) or ""
+            where_it, where_es = (f"a {place}", f"en {place}") if place else ("vicino a te", "cerca de ti")
+            await send_push(s["user_id"],
+                            {"it": f"Richiesta di {CAT_NAME['it'][cat]} vicino a te",
+                             "es": f"Solicitud de {CAT_NAME['es'][cat]} cerca de ti"},
+                            {"it": f"Una persona {where_it} ha fatto una diagnosi: «{diag.get('title_it') or diag.get('title_es')}».",
+                             "es": f"Una persona {where_es} ha hecho una diagnosis: «{diag.get('title_es') or diag.get('title_it')}»."},
+                            {"type": "nearby"})
+    except Exception as e:
+        logger.warning("avisos de diagnosis cercana: %s", e)
+
+
+# --- Tiempo de respuesta del especialista ---
+async def record_response_time(conv: dict, sent_at: str) -> None:
+    try:
+        last_mine = await db.messages.find_one({"conversation_id": conv["conversation_id"],
+                                                "sender_id": conv["specialist_user_id"], "created_at": {"$lt": sent_at}},
+                                               sort=[("created_at", -1)])
+        q = {"conversation_id": conv["conversation_id"], "sender_id": conv["client_id"], "created_at": {"$lt": sent_at}}
+        if last_mine:
+            q["created_at"]["$gt"] = last_mine["created_at"]
+        first_client = await db.messages.find_one(q, sort=[("created_at", 1)])
+        if not first_client:
+            return
+        mins = (datetime.fromisoformat(sent_at) - datetime.fromisoformat(first_client["created_at"])).total_seconds() / 60
+        await db.response_times.insert_one({"specialist_id": conv["specialist_id"], "minutes": round(mins, 1), "at": sent_at})
+        last = await db.response_times.find({"specialist_id": conv["specialist_id"]}, {"_id": 0, "minutes": 1}) \
+            .sort("at", -1).to_list(20)
+        avg = sum(x["minutes"] for x in last) / len(last)
+        await db.specialists.update_one({"specialist_id": conv["specialist_id"]},
+                                        {"$set": {"resp_avg_min": round(avg), "resp_count": len(last)}})
+    except Exception as e:
+        logger.warning("tiempo de respuesta: %s", e)
+
+
+async def after_message(conv: dict, sender: dict, msg: dict) -> None:
+    if sender["user_id"] == conv.get("specialist_user_id"):
+        await record_response_time(conv, msg["created_at"])
+        if not conv.get("first_reply_at"):
+            await db.conversations.update_one({"conversation_id": conv["conversation_id"],
+                                               "first_reply_at": {"$exists": False}},
+                                              {"$set": {"first_reply_at": msg["created_at"]}})
+        await notify_message(conv, sender, msg["text"], False)
+    else:
+        n = await db.messages.count_documents({"conversation_id": conv["conversation_id"], "sender_id": sender["user_id"]},
+                                              limit=2)
+        await notify_message(conv, sender, msg["text"], n == 1)
+
+
+# --- Visitas al perfil ---
+async def record_view(s: dict, viewer: dict) -> None:
+    if viewer["user_id"] == s["user_id"]:
+        return
+    day = now().astimezone(ROME).strftime("%Y-%m-%d")
+    await db.profile_views.update_one({"specialist_id": s["specialist_id"], "viewer_id": viewer["user_id"], "day": day},
+                                      {"$setOnInsert": {"at": iso(now())}}, upsert=True)
+
+
+async def my_spec(request: Request) -> tuple:
+    user = await current_user(request)
+    s = await db.specialists.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not s:
+        raise HTTPException(404, "Not a specialist")
+    return user, s
+
+
+@api.get("/specialists/me/stats")
+async def my_stats(request: Request, days: str = "7"):
+    user, s = await my_spec(request)
+    sid = s["specialist_id"]
+    n = {"7": 7, "30": 30}.get(days)
+    start = iso(now() - timedelta(days=n)) if n else "0"
+    prev = iso(now() - timedelta(days=2 * n)) if n else None
+
+    async def views(a: str, b: Optional[str] = None) -> int:
+        q = {"specialist_id": sid, "at": {"$gte": a}}
+        if b:
+            q["at"]["$lt"] = b
+        return await db.profile_views.count_documents(q)
+
+    conv_ids = [c["conversation_id"] async for c in db.conversations.find({"specialist_id": sid}, {"_id": 0, "conversation_id": 1})]
+
+    async def clients(a: str, b: Optional[str] = None) -> int:
+        q = {"conversation_id": {"$in": conv_ids}, "sender_id": {"$ne": user["user_id"]}, "created_at": {"$gte": a}}
+        if b:
+            q["created_at"]["$lt"] = b
+        return len(await db.messages.distinct("conversation_id", q))
+
+    v, c = await views(start), await clients(start)
+    v_prev = await views(prev, start) if n else None
+    c_prev = await clients(prev, start) if n else None
+    rts = [x["minutes"] async for x in db.response_times.find({"specialist_id": sid, "at": {"$gte": start}}, {"_id": 0})]
+    today = now().astimezone(ROME).date()
+    daily = []
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        daily.append({"day": d.isoformat(), "weekday": d.isoweekday(),
+                      "views": await db.profile_views.count_documents({"specialist_id": sid, "day": d.isoformat()})})
+    return {"views": v, "views_change_pct": (round((v - v_prev) * 100 / v_prev) if v_prev else None),
+            "clients": c, "clients_change": (c - c_prev if c_prev is not None else None),
+            "response_avg_min": round(sum(rts) / len(rts)) if rts else None,
+            "response_within_1h_pct": round(sum(1 for x in rts if x <= 60) * 100 / len(rts)) if rts else None,
+            "rating_avg": s.get("rating_avg") if s.get("reviews_count") else None, "reviews_count": s.get("reviews_count") or 0,
+            "daily": daily}
+
+
+# --- Zona, horario, avisos y respuestas rapidas ---
+class ZoneIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    radius_km: int = Field(ge=1, le=50)
+    days: List[int] = Field(max_length=7)
+    from_: str = Field(alias="from", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    to: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$|^24:00$")
+    urgent: bool = False
+
+
+@api.get("/specialists/me/settings")
+async def my_settings(request: Request, lang: str = "it"):
+    user, s = await my_spec(request)
+    center, radius = spec_zone(s)
+    alerts = s.get("alerts") or {}
+    return {"zone": {"lat": center[0], "lng": center[1], "radius_km": radius, "label": (s.get("zone") or {}).get("label"),
+                     "set": bool(s.get("zone"))},
+            "schedule": s.get("schedule") or {"days": [1, 2, 3, 4, 5, 6], "from": "08:00", "to": "19:00"},
+            "schedule_set": bool(s.get("schedule")), "urgent": bool(s.get("urgent")),
+            "alerts": {"enabled": alerts.get("enabled", True), "categories": alerts.get("categories") or s.get("categories") or []},
+            "quick_replies": s["quick_replies"] if s.get("quick_replies") is not None
+            else DEFAULT_QUICK_REPLIES["es" if lang == "es" else "it"],
+            "featured_until": s.get("featured_until") if featured_active(s) else None,
+            "categories": s.get("categories") or [], "has_push": bool(user.get("push_tokens"))}
+
+
+@api.put("/specialists/me/zone")
+async def save_zone(body: ZoneIn, request: Request):
+    user, s = await my_spec(request)
+    days = sorted({d for d in body.days if 1 <= d <= 7})
+    if not days or _hm(body.from_) >= _hm(body.to):
+        raise HTTPException(400, "Invalid schedule")
+    label = await reverse_place(body.lat, body.lng) if (s.get("zone") or {}).get("lat") != body.lat else (s.get("zone") or {}).get("label")
+    await db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {
+        "zone": {"lat": body.lat, "lng": body.lng, "radius_km": body.radius_km, "label": label},
+        "schedule": {"days": days, "from": body.from_, "to": body.to}, "urgent": body.urgent}})
+    return await my_settings(request)
+
+
+class AlertsIn(BaseModel):
+    enabled: bool
+    categories: List[str] = Field(max_length=10)
+
+
+@api.put("/specialists/me/alerts")
+async def save_alerts(body: AlertsIn, request: Request):
+    user, s = await my_spec(request)
+    cats = [c for c in dict.fromkeys(body.categories) if c in (s.get("categories") or [])]
+    await db.specialists.update_one({"specialist_id": s["specialist_id"]},
+                                    {"$set": {"alerts": {"enabled": body.enabled, "categories": cats}}})
+    return {"enabled": body.enabled, "categories": cats}
+
+
+class QuickRepliesIn(BaseModel):
+    items: List[str] = Field(max_length=10)
+
+
+@api.put("/specialists/me/quick-replies")
+async def save_quick_replies(body: QuickRepliesIn, request: Request):
+    user, s = await my_spec(request)
+    items = [" ".join(x.split())[:200] for x in body.items if x.strip()][:10]
+    await db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {"quick_replies": items}})
+    return {"items": items}
+
+
+# --- Perfil destacado (compra en Google Play via RevenueCat; consumible de 7 o 30 dias) ---
+@api.get("/featured/status")
+async def featured_status(request: Request):
+    user, s = await my_spec(request)
+    cat = (s.get("categories") or [None])[0]
+    taken = await db.specialists.count_documents({"categories": cat, "featured_until": {"$gt": iso(now())},
+                                                  "specialist_id": {"$ne": s["specialist_id"]}}) if cat else 0
+    return {"featured_until": s.get("featured_until") if featured_active(s) else None,
+            "slots_left": max(0, FEATURED_MAX_PER_TRADE - taken), "category": cat,
+            "membership_active": membership_active(s)}
+
+
+@api.post("/featured/sync")
+async def featured_sync(request: Request):
+    """Pregunta a RevenueCat (clave secreta) por las compras del destacado; cada compra se aplica una sola vez."""
+    user, s = await my_spec(request)
+    secret = os.environ.get("REVENUECAT_SECRET_API_KEY")
+    if not secret:
+        raise HTTPException(503, "Purchase check unavailable")
+    async with httpx.AsyncClient(timeout=20) as hc:
+        r = await hc.get(f"https://api.revenuecat.com/v1/subscribers/{user['user_id']}",
+                         headers={"Authorization": f"Bearer {secret}"})
+    if r.status_code not in (200, 201):
+        raise HTTPException(502, "Purchase not verified")
+    purchases = r.json().get("subscriber", {}).get("non_subscriptions") or {}
+    added = 0
+    for pid, txs in purchases.items():
+        if "featured" not in pid.lower():
+            continue
+        days = 30 if "30" in pid else 7
+        for tx in txs or []:
+            tid = tx.get("id") or tx.get("store_transaction_id")
+            if not tid:
+                continue
+            try:
+                await db.featured_purchases.insert_one({"tx_id": tid, "user_id": user["user_id"], "product": pid,
+                                                        "days": days, "at": iso(now())})
+            except Exception:
+                continue  # ya aplicada
+            added += days
+    if added:
+        base = now()
+        if featured_active(s):
+            base = datetime.fromisoformat(s["featured_until"])
+        await db.specialists.update_one({"specialist_id": s["specialist_id"]},
+                                        {"$set": {"featured_until": iso(base + timedelta(days=added))}})
+    return await featured_status(request)
+
+
+# --- Reportes de clientes a especialistas ---
+def _spec_decision_token(sid: str, decision: str) -> str:
+    import hmac
+    import hashlib
+    return hmac.new(JWT_SECRET.encode(), f"spec-decision:{sid}:{decision}".encode(), hashlib.sha256).hexdigest()
+
+
+async def specialist_reported(sid: str, reporter_id: str, reason: str, details: str) -> None:
+    """Cuenta solo a clientes que hablaron con el. Con 3 clientes distintos el perfil se oculta y te llega un correo."""
+    s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0})
+    if not s:
+        return
+    if not await db.conversations.find_one({"client_id": reporter_id, "specialist_id": sid}):
+        return
+    s = await db.specialists.find_one_and_update({"specialist_id": sid}, {"$addToSet": {"client_reports": reporter_id}},
+                                                 return_document=True, projection={"_id": 0})
+    if len(s.get("client_reports") or []) < SPEC_REPORTS_TO_HIDE or s.get("hidden"):
+        return
+    await db.specialists.update_one({"specialist_id": sid}, {"$set": {"hidden": True, "hidden_at": iso(now())}})
+    logger.warning("Especialista %s oculto por reportes", sid)
+    reps = await db.reports.find({"target_type": "specialist", "target_id": sid}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    base = _api_base()
+    links = {d: f"{base}/api/admin/specialists/{sid}/decide?d={d}&t={_spec_decision_token(sid, d)}" for d in ("show", "remove")}
+    lines = [f"- {r['reason']}: {r.get('details') or '(sin detalles)'} ({r['created_at'][:10]})" for r in reps]
+    text = (f"El perfil de {s['name']} ({s.get('phone') or ''}) se ha ocultado: lo han reportado {SPEC_REPORTS_TO_HIDE} clientes "
+            f"distintos que hablaron con él.\n\n" + "\n".join(lines) +
+            f"\n\nVolver a mostrarlo: {links['show']}\nDarlo de baja: {links['remove']}")
+    html = (f"<div style=\"font-family:Arial,sans-serif;color:#0a1628\"><p>El perfil de <b>{_esc(s['name'])}</b> se ha ocultado: "
+            f"lo han reportado {SPEC_REPORTS_TO_HIDE} clientes distintos que hablaron con él.</p><ul>"
+            + "".join(f"<li>{_esc(x[2:])}</li>" for x in lines) +
+            f"</ul><p><a href=\"{_esc(links['show'])}\">Volver a mostrarlo</a> · <a href=\"{_esc(links['remove'])}\">Darlo de baja</a></p></div>")
+    await send_email(os.environ.get("ADMIN_EMAIL", "info@be-happyapp.com"), f"Be Happy: perfil de {s['name']} oculto por reportes",
+                     text, html)
+
+
+@api.get("/admin/specialists/{sid}/decide")
+async def admin_spec_decide_page(sid: str, d: str, t: str):
+    import hmac
+    if d not in ("show", "remove") or not hmac.compare_digest(t, _spec_decision_token(sid, d)):
+        raise HTTPException(403, "Forbidden")
+    s = await db.specialists.find_one({"specialist_id": sid}, {"_id": 0})
+    if not s:
+        raise HTTPException(404, "Not found")
+    label = "Volver a mostrar" if d == "show" else "Dar de baja"
+    form = (f"<form method=\"post\"><input type=\"hidden\" name=\"t\" value=\"{_esc(t)}\">"
+            f"<button style=\"font-size:16px;padding:12px 24px;border-radius:999px;border:0;"
+            f"background:{'#ff6b00' if d == 'show' else '#0a1628'};color:{'#0a1628' if d == 'show' else '#fff'}\">{label}</button></form>")
+    return _decide_page(f"{label}: {s['name']}", f"<p>{_esc(s.get('phone') or '')} · reportes: {len(s.get('client_reports') or [])}</p>" + form)
+
+
+@api.post("/admin/specialists/{sid}/decide")
+async def admin_spec_decide(sid: str, d: str, request: Request):
+    import hmac
+    form = await request.form()
+    t = str(form.get("t") or "")
+    if d not in ("show", "remove") or not hmac.compare_digest(t, _spec_decision_token(sid, d)):
+        raise HTTPException(403, "Forbidden")
+    upd = {"hidden": False, "client_reports": []} if d == "show" else {"hidden": True, "removed": True, "removed_at": iso(now())}
+    s = await db.specialists.find_one_and_update({"specialist_id": sid}, {"$set": upd}, return_document=True, projection={"_id": 0})
+    if not s:
+        raise HTTPException(404, "Not found")
+    await db.reports.update_many({"target_type": "specialist", "target_id": sid, "status": "open"}, {"$set": {"status": "resolved"}})
+    return _decide_page("Hecho", f"<p>{_esc(s['name'])}: {'visible otra vez' if d == 'show' else 'dado de baja'}.</p>")
+
+
+# --- Diagnosis compartida en el chat ---
+def diagnosis_summary(d: dict) -> dict:
+    return {"diagnosis_id": d["diagnosis_id"], "title_es": d.get("title_es"), "title_it": d.get("title_it"),
+            "category": d.get("category"), "image_path": d.get("image_path"),
+            "materials": [m.get("name") for m in (d.get("materials") or []) if isinstance(m, dict) and m.get("name")][:6],
+            "materials_lang": d.get("language")}
+
+
+async def review_prompt_for(conv: dict, user: dict) -> bool:
+    if user["user_id"] != conv.get("client_id") or not conv.get("first_reply_at"):
+        return False
+    if conv["first_reply_at"] > iso(now() - timedelta(days=REVIEW_PROMPT_DAYS)):
+        return False
+    s = await db.specialists.find_one({"specialist_id": conv["specialist_id"]}, {"_id": 0})
+    return bool(s) and await can_review(user, s)
+
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -2007,6 +2557,11 @@ async def startup():
     await db.auth_sessions.create_index("user_id")
     await db.auth_sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.stores.create_index("store_id", unique=True)
+    await db.profile_views.create_index([("specialist_id", 1), ("viewer_id", 1), ("day", 1)], unique=True)
+    await db.profile_views.create_index([("specialist_id", 1), ("at", 1)])
+    await db.response_times.create_index([("specialist_id", 1), ("at", -1)])
+    await db.featured_purchases.create_index("tx_id", unique=True)
+    await db.push_quota.create_index([("specialist_id", 1), ("day", 1)], unique=True)
     await db.stores.create_index([("location", "2dsphere")])
     await db.stores.create_index([("piva", 1), ("cap", 1)])
     await db.specialists.update_many({"document_number": {"$exists": True}}, {"$unset": {"document_number": ""}})
