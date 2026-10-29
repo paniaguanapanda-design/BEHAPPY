@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -15,7 +15,7 @@ import { useToast } from "@/src/toast";
 import { queryClient } from "@/src/query-client";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar, Button, Loading, SectionTitle, Stars, VerifiedBadge } from "@/src/ui";
-import { ReportSheet } from "@/src/ReportSheet";
+import { ReportSheet, SPECIALIST_REASONS } from "@/src/ReportSheet";
 
 export default function SpecialistProfile() {
   const styles = useStyles();
@@ -25,7 +25,7 @@ export default function SpecialistProfile() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const toast = useToast();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, diag, review } = useLocalSearchParams<{ id: string; diag?: string; review?: string }>();
   const sq = useQuery({ queryKey: ["specialist", id], queryFn: () => api<any>(`/specialists/${id}`) });
   const rq = useQuery({ queryKey: ["reviews", id], queryFn: () => api<any[]>(`/specialists/${id}/reviews`) });
   const [sheet, setSheet] = useState<null | "review">(null);
@@ -34,6 +34,15 @@ export default function SpecialistProfile() {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Opened from the chat card "Com'è andata?": the review sheet opens with the stars already chosen.
+  useEffect(() => {
+    const n = Number(review);
+    if (n >= 1 && n <= 5) {
+      setRating(n);
+      setSheet("review");
+    }
+  }, [review]);
 
   if (sq.isLoading) return <Loading />;
   const s = sq.data;
@@ -50,7 +59,7 @@ export default function SpecialistProfile() {
 
   const openChat = async () => {
     try {
-      const c = await api<any>("/conversations", { body: { specialist_id: s.specialist_id } });
+      const c = await api<any>("/conversations", { body: { specialist_id: s.specialist_id, ...(diag ? { diagnosis_id: diag } : {}) } });
       router.push({ pathname: "/chat/[id]", params: { id: c.conversation_id } });
     } catch (e: any) {
       toast(e.message, "error");
@@ -198,6 +207,8 @@ export default function SpecialistProfile() {
         targetType={report?.type ?? "specialist"}
         targetId={report?.id ?? ""}
         blockUserId={report?.blockId}
+        reasons={report?.type === "specialist" ? SPECIALIST_REASONS : undefined}
+        targetName={report?.type === "specialist" ? s.name : undefined}
         onBlocked={() => router.back()}
       />
       <BlurView intensity={60} tint="light" style={[styles.cta, { paddingBottom: insets.bottom + 12 }]}>

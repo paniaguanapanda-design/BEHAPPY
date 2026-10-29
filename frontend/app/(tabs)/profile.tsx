@@ -1,11 +1,14 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
+import { useSeen } from "@/src/seen";
+import { fmtMinutes, NewBadge, scheduleText } from "@/src/proUi";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { Avatar } from "@/src/ui";
@@ -14,9 +17,17 @@ import { useMembership } from "@/src/membership";
 import { HistoryList } from "@/src/HistoryList";
 import { fmtDate } from "@/src/time";
 
-type RowProps = { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; sub?: string; onPress: () => void; testID: string; danger?: boolean };
+type RowProps = {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  title: string;
+  sub?: string;
+  onPress: () => void;
+  testID: string;
+  danger?: boolean;
+  isNew?: boolean;
+};
 
-function Row({ icon, title, sub, onPress, testID, danger }: RowProps) {
+function Row({ icon, title, sub, onPress, testID, danger, isNew }: RowProps) {
   const styles = useStyles();
   const { colors } = useTheme();
   return (
@@ -25,12 +36,27 @@ function Row({ icon, title, sub, onPress, testID, danger }: RowProps) {
         <Ionicons name={icon} size={20} color={danger ? colors.error : colors.brandPrimary} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.rowTitle, danger && { color: colors.error }]}>{title}</Text>
+        <View style={styles.rowTitleLine}>
+          <Text style={[styles.rowTitle, danger && { color: colors.error }]}>{title}</Text>
+          {isNew ? <NewBadge /> : null}
+        </View>
         {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
       </View>
       {!danger && <Ionicons name="chevron-forward" size={18} color={colors.muted} />}
     </Pressable>
   );
+}
+
+function zoneSub(st: any, t: (k: string) => string, lang: string) {
+  const where = st.zone.set ? `${st.zone.label || t("turin")} + ${st.zone.radius_km} km` : t("zone_not_set");
+  return st.schedule_set ? `${where} · ${scheduleText(st.schedule, lang)}` : where;
+}
+
+function alertsCats(st: any, t: (k: string) => string) {
+  const cats: string[] = st.alerts.categories || [];
+  if (!cats.length) return t("alerts_none");
+  if (cats.length === st.categories.length && cats.length > 1) return t("alerts_all");
+  return `${t("only")} ${cats.map((c) => t(`cat_${c}`).toLowerCase()).join(", ")}`;
 }
 
 export default function Profile() {
@@ -40,11 +66,33 @@ export default function Profile() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { t, lang } = useI18n();
-  const isSpec = user?.role === "specialist" && user.specialist_id;
+  const isSpec = !!(user?.role === "specialist" && user.specialist_id);
   const membership = useMembership(!!isSpec);
+  const spec = useQuery({ queryKey: ["specialist-me"], queryFn: () => api<any>("/specialists/me"), enabled: !!isSpec });
+  const settings = useQuery({ queryKey: ["pro-settings", lang], queryFn: () => api<any>(`/specialists/me/settings?lang=${lang}`), enabled: !!isSpec });
+  const stats = useQuery({ queryKey: ["pro-stats", "7"], queryFn: () => api<any>("/specialists/me/stats?days=7"), enabled: !!isSpec });
+  const seenStats = useSeen("pro_stats");
+  const seenZone = useSeen("pro_zone");
+  const seenReplies = useSeen("pro_replies");
+  const seenAlerts = useSeen("pro_alerts");
+  const seenFeatured = useSeen("pro_featured");
+  useFocusEffect(
+    useCallback(() => {
+      [seenStats, seenZone, seenReplies, seenAlerts, seenFeatured].forEach((x) => x.reload());
+      if (isSpec) {
+        stats.refetch();
+        settings.refetch();
+        spec.refetch();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isSpec]),
+  );
   const [tab, setTab] = useState<"account" | "history">("account");
   const { colors } = useTheme();
   const it = lang === "it";
+  const sp = spec.data;
+  const st = settings.data;
+  const wk = stats.data;
   const [delOpen, setDelOpen] = useState(false);
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -80,36 +128,114 @@ export default function Profile() {
         <HistoryList bottom={bottomChrome} />
       ) : (
       <ScrollView contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: bottomChrome + 24 }}>
-        <View style={styles.userCard}>
-          <Avatar uri={user?.picture} name={user?.name} size={64} />
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.name} testID="profile-name">
-              {user?.name}
-            </Text>
-            <Text style={styles.email}>{user?.email}</Text>
-            <View style={styles.role}>
-              <Text style={styles.roleText} testID="profile-role">
-                {isSpec ? t("role_specialist") : t("role_client")}
+        {isSpec ? (
+          <View style={styles.userCard}>
+            <Avatar uri={sp?.avatar || user?.picture} name={sp?.name || user?.name} size={64} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.name} testID="profile-name">
+                {sp?.name || user?.name}
               </Text>
+              <Text style={styles.email}>
+                {(sp?.categories || []).map((c: string) => t(`pro_cat_${c}`)).join(", ")} · {t("turin")}
+              </Text>
+              <View style={[styles.avail, !sp?.available_now && styles.availOff]} testID="profile-availability">
+                <View style={[styles.availDot, !sp?.available_now && styles.availDotOff]} />
+                <Text style={[styles.availText, !sp?.available_now && styles.availTextOff]}>
+                  {sp?.available_now ? t("available_now") : sp && !sp.membership_active ? t("mb_inactive") : t("out_of_hours")}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-
-        <View style={styles.group}>
-          <View style={styles.langRow}>
-            <Ionicons name="language" size={20} color={styles.langIcon.color} />
-            <Text style={[styles.rowTitle, { flex: 1 }]}>{t("language")}</Text>
-            <LangToggle />
+        ) : (
+          <View style={styles.userCard}>
+            <Avatar uri={user?.picture} name={user?.name} size={64} />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.name} testID="profile-name">
+                {user?.name}
+              </Text>
+              <Text style={styles.email}>{user?.email}</Text>
+              <View style={styles.role}>
+                <Text style={styles.roleText} testID="profile-role">
+                  {t("role_client")}
+                </Text>
+              </View>
+            </View>
           </View>
-        </View>
+        )}
 
-        <View style={styles.group}>
-          {isSpec ? (
-            <>
+        {isSpec && (
+          <View style={{ gap: 10 }}>
+            <View style={styles.weekHead}>
+              <View style={styles.rowTitleLine}>
+                <Text style={styles.weekTitle}>{t("this_week")}</Text>
+                {seenStats.isNew ? <NewBadge /> : null}
+              </View>
+              <Pressable testID="stats-details" hitSlop={8} onPress={() => router.push("/pro-stats")}>
+                <Text style={styles.details}>{t("details")} ›</Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={() => router.push("/pro-stats")} style={styles.tiles} testID="week-tiles">
+              <View style={styles.tile}>
+                <Text style={styles.tileNum}>{wk ? wk.views : "–"}</Text>
+                <Text style={styles.tileLabel}>{t("stat_views")}</Text>
+                {wk?.views_change_pct != null && wk.views_change_pct !== 0 ? (
+                  <Text style={[styles.up, wk.views_change_pct < 0 && styles.down]}>
+                    {wk.views_change_pct > 0 ? "▲" : "▼"} {Math.abs(wk.views_change_pct)}%
+                  </Text>
+                ) : null}
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileNum}>{wk ? wk.clients : "–"}</Text>
+                <Text style={styles.tileLabel}>{t("stat_clients")}</Text>
+                {wk?.clients_change ? (
+                  <Text style={[styles.up, wk.clients_change < 0 && styles.down]}>
+                    {wk.clients_change > 0 ? "▲" : "▼"} {Math.abs(wk.clients_change)}
+                  </Text>
+                ) : null}
+              </View>
+              <View style={styles.tile}>
+                <Text style={styles.tileNum}>{wk?.response_avg_min != null ? fmtMinutes(wk.response_avg_min) : "–"}</Text>
+                <Text style={styles.tileLabel}>{t("stat_response")}</Text>
+              </View>
+            </Pressable>
+          </View>
+        )}
+
+        {isSpec ? (
+          <>
+            <View style={styles.group}>
               <Row testID="my-specialist-profile-row" icon="id-card-outline" title={t("my_specialist_profile")} onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: user!.specialist_id! } })} />
               <View style={styles.sep} />
-              <Row testID="edit-specialist-row" icon="create-outline" title={t("edit_specialist")} onPress={() => router.push("/specialist-form")} />
+              <Row testID="edit-specialist-row" icon="create-outline" title={t("edit_profile_short")} onPress={() => router.push("/specialist-form")} />
               <View style={styles.sep} />
+              <Row
+                testID="zone-row"
+                icon="location-outline"
+                title={t("zone_hours")}
+                sub={st ? zoneSub(st, t, lang) : undefined}
+                isNew={seenZone.isNew}
+                onPress={() => router.push("/pro-zone")}
+              />
+              <View style={styles.sep} />
+              <Row
+                testID="quick-replies-row"
+                icon="flash-outline"
+                title={t("quick_replies")}
+                sub={st ? t("quick_replies_count").replace("{n}", String(st.quick_replies.length)) : undefined}
+                isNew={seenReplies.isNew}
+                onPress={() => router.push("/pro-replies")}
+              />
+              <View style={styles.sep} />
+              <Row
+                testID="alerts-row"
+                icon="notifications-outline"
+                title={t("alerts_title")}
+                sub={st ? (st.alerts.enabled ? `${t("alerts_on")} · ${alertsCats(st, t)}` : t("alerts_off")) : undefined}
+                isNew={seenAlerts.isNew}
+                onPress={() => router.push("/pro-alerts")}
+              />
+            </View>
+            <View style={styles.group}>
               <Row
                 testID="membership-row"
                 icon="ribbon-outline"
@@ -117,11 +243,29 @@ export default function Profile() {
                 sub={membership.data ? (membership.data.active ? `${t("active_until")} ${fmtDate(membership.data.expires_at!, lang)}` : t("mb_inactive")) : undefined}
                 onPress={() => router.push("/membership")}
               />
-            </>
-          ) : (
-            <Row testID="become-specialist-row" icon="briefcase-outline" title={t("become_specialist")} sub={t("become_specialist_sub")} onPress={() => router.push("/specialist-form")} />
-          )}
-          <View style={styles.sep} />
+              <View style={styles.sep} />
+              <Row
+                testID="featured-row"
+                icon="star-outline"
+                title={t("featured_title")}
+                sub={
+                  st?.featured_until
+                    ? `${t("featured_until")} ${fmtDate(st.featured_until, lang)}`
+                    : t("featured_sub").replace("{trade}", t(`pro_cats_${(sp?.categories || ["plumbing"])[0]}`))
+                }
+                isNew={seenFeatured.isNew}
+                onPress={() => router.push("/pro-featured")}
+              />
+            </View>
+          </>
+        ) : null}
+
+        <View style={styles.group}>
+          <View style={styles.langRow}>
+            <Ionicons name="language" size={20} color={styles.langIcon.color} />
+            <Text style={[styles.rowTitle, { flex: 1 }]}>{t("language")}</Text>
+            <LangToggle />
+          </View>
         </View>
 
         <View style={styles.group}>
@@ -199,7 +343,23 @@ const useStyles = makeStyles((c) => ({
   langIcon: { color: c.brandPrimary },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 60 },
   rowIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
-  rowTitle: { fontSize: 16, fontWeight: "600", color: c.onSurface },
+  rowTitle: { fontSize: 16, fontWeight: "600", color: c.onSurface, flexShrink: 1 },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  avail: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "#E7F6EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginTop: 4 },
+  availOff: { backgroundColor: c.surfaceTertiary },
+  availDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#16794A" },
+  availDotOff: { backgroundColor: c.muted },
+  availText: { fontSize: 12, fontWeight: "700", color: "#16794A" },
+  availTextOff: { color: c.onSurfaceTertiary },
+  weekHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  weekTitle: { fontSize: 18, fontFamily: fonts.display, color: c.onSurface },
+  details: { color: c.brandTertiary, fontWeight: "700", fontSize: 13 },
+  tiles: { flexDirection: "row", gap: 8 },
+  tile: { flex: 1, backgroundColor: c.surfaceInverse, borderRadius: 14, padding: 12, gap: 2 },
+  tileNum: { color: c.onSurfaceInverse, fontSize: 24, fontFamily: fonts.display },
+  tileLabel: { color: "#B8C2D3", fontSize: 12, lineHeight: 16 },
+  up: { color: "#4ADE80", fontSize: 11, fontWeight: "700", marginTop: 2 },
+  down: { color: "#FCA5A5" },
   rowSub: { fontSize: 13, color: c.muted, marginTop: 2 },
   sep: { height: 1, backgroundColor: c.divider, marginLeft: 64 },
   modalBack: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 24 },

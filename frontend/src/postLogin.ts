@@ -1,13 +1,14 @@
 // Small hand-offs between the public screens (login, /pro) and the auth gate.
 
-// Set by the specialists page: the login screen opens in "create account" mode for a specialist.
-let proIntent = false;
-export const setProIntent = () => {
-  proIntent = true;
+// Set by the specialists page: the login screen opens for a specialist ("up" = create account, "in" = sign in).
+// Either way the profile form opens right after: it is the only way into it, since clients don't see it.
+let proIntent: "up" | "in" | null = null;
+export const setProIntent = (mode: "up" | "in" = "up") => {
+  proIntent = mode;
 };
 export const takeProIntent = () => {
   const v = proIntent;
-  proIntent = false;
+  proIntent = null;
   return v;
 };
 

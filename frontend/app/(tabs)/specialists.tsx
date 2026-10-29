@@ -1,16 +1,16 @@
-import React, { useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { Image } from "expo-image";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, imageSource } from "@/src/api";
+import { api } from "@/src/api";
+import { useMyPosition } from "@/src/position";
 import { CATEGORIES, tradesLabel, useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
-import { Avatar, Button, Stars, VerifiedBadge } from "@/src/ui";
+import { Avatar, Button } from "@/src/ui";
 
 export default function Specialists() {
   const styles = useStyles();
@@ -19,72 +19,69 @@ export default function Specialists() {
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const router = useRouter();
   const { t, lang } = useI18n();
-  const params = useLocalSearchParams<{ category?: string }>();
+  const params = useLocalSearchParams<{ category?: string; diag?: string }>();
   const [cat, setCat] = useState<string>(params.category || "");
-  const [search, setSearch] = useState("");
-  const [qText, setQText] = useState("");
-  const chipScroll = useRef<ScrollView>(null);
-  const chipX = useRef<Record<string, number>>({});
+  const [availOnly, setAvailOnly] = useState(false);
+  const me = useMyPosition();
 
   useEffect(() => {
-    if (params.category) {
-      setCat(params.category);
-      const x = chipX.current[params.category];
-      if (x != null) chipScroll.current?.scrollTo({ x: Math.max(0, x - 16), animated: true });
-    }
+    if (params.category) setCat(params.category);
   }, [params.category]);
 
-  useEffect(() => {
-    const h = setTimeout(() => setQText(search), 350);
-    return () => clearTimeout(h);
-  }, [search]);
-
+  const pos = me.pos;
   const q = useQuery({
-    queryKey: ["specialists", cat, qText],
-    queryFn: () => api<any[]>(`/specialists?category=${cat || "all"}${qText ? `&q=${encodeURIComponent(qText)}` : ""}`),
+    queryKey: ["specialists", cat, availOnly, pos?.lat.toFixed(2), pos?.lng.toFixed(2)],
+    enabled: me.ready,
+    queryFn: () =>
+      api<any[]>(
+        `/specialists?category=${cat || "all"}${availOnly ? "&available=true" : ""}${pos ? `&lat=${pos.lat}&lng=${pos.lng}` : ""}`,
+      ),
   });
+
+  const subLine = (item: any) => {
+    const parts: string[] = [];
+    if (!cat) parts.push(tradesLabel(item.categories, t));
+    if (item.rating_avg != null) parts.push(`★ ${item.rating_avg.toFixed(1).replace(".", ",")} (${item.reviews_count})`);
+    if (item.distance_km != null) parts.push(t("km_away").replace("{n}", String(Math.max(1, Math.round(item.distance_km)))));
+    if (item.response_min != null && item.available_now) parts.push(t("replies_in").replace("{n}", String(Math.max(1, item.response_min))));
+    else if (item.available_now) parts.push(t("available_now").toLowerCase());
+    else if (item.urgent) parts.push(t("accepts_urgent"));
+    else if (item[`schedule_label_${lang}`]) parts.push(item[`schedule_label_${lang}`]);
+    else if (!item.membership_active) parts.push(t("may_reply_later").toLowerCase());
+    return parts.join(" · ");
+  };
 
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.title}>{t("specialists_title")}</Text>
-        <View style={styles.search}>
-          <Ionicons name="search" size={18} color={colors.muted} />
-          <TextInput
-            testID="specialist-search-input"
-            style={styles.searchInput}
-            placeholder={t("search_ph")}
-            placeholderTextColor={colors.muted}
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
-      </View>
-      <View style={styles.chipRow}>
-        <ScrollView ref={chipScroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipContent}>
+        <View style={styles.chips}>
           {CATEGORIES.map((c) => (
-            <Pressable
-              key={c}
-              testID={`category-chip-${c}`}
-              onLayout={(e) => {
-                chipX.current[c] = e.nativeEvent.layout.x;
-                if (c === cat) chipScroll.current?.scrollTo({ x: Math.max(0, e.nativeEvent.layout.x - 16), animated: false });
-              }}
-              onPress={() => setCat(cat === c ? "" : c)}
-              style={[styles.chip, cat === c && styles.chipOn]}
-            >
+            <Pressable key={c} testID={`category-chip-${c}`} onPress={() => setCat(cat === c ? "" : c)} style={[styles.chip, cat === c && styles.chipOn]}>
               <Text style={[styles.chipText, cat === c && styles.chipTextOn]}>{t(`cat_${c}`)}</Text>
             </Pressable>
           ))}
-        </ScrollView>
+          <Pressable testID="available-chip" onPress={() => setAvailOnly(!availOnly)} style={[styles.chip, styles.chipRow, availOnly && styles.chipOn]}>
+            <View style={[styles.dot, availOnly && { backgroundColor: colors.onSurfaceInverse }]} />
+            <Text style={[styles.chipText, availOnly && styles.chipTextOn]}>{t("available_now_plural")}</Text>
+          </Pressable>
+        </View>
+        {pos ? (
+          <Text style={styles.zoneNote}>{t("only_your_zone")}</Text>
+        ) : me.ready && me.canAsk ? (
+          <Pressable testID="ask-location" onPress={() => me.request()} style={styles.locBtn} hitSlop={6}>
+            <Ionicons name="location-outline" size={16} color={colors.brandTertiary} />
+            <Text style={styles.locText}>{t("enable_location_zone")}</Text>
+          </Pressable>
+        ) : null}
       </View>
       <FlatList
         data={q.data || []}
         keyExtractor={(i) => i.specialist_id}
-        contentContainerStyle={{ padding: 16, paddingBottom: bottomChrome + 24, gap: 12 }}
+        contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: bottomChrome + 24, gap: 12 }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
         ListEmptyComponent={
-          q.isLoading ? (
+          q.isLoading || !me.ready ? (
             <View style={{ gap: 12 }}>
               {[0, 1, 2].map((i) => (
                 <View key={i} style={styles.skeleton} />
@@ -98,7 +95,7 @@ export default function Specialists() {
           ) : (
             <View style={styles.empty} testID="no-specialists">
               <Ionicons name="construct-outline" size={40} color={colors.brandTertiary} />
-              <Text style={styles.emptyText}>{t("no_specialists")}</Text>
+              <Text style={styles.emptyText}>{availOnly ? t("no_specialists_now") : t("no_specialists")}</Text>
             </View>
           )
         }
@@ -106,39 +103,34 @@ export default function Specialists() {
           <Animated.View entering={FadeInDown.delay(Math.min(index, 6) * 40).duration(250)}>
             <Pressable
               testID={`specialist-card-${item.specialist_id}`}
-              onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: item.specialist_id } })}
-              style={({ pressed }) => [styles.card, pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 }]}
+              onPress={() =>
+                router.push({ pathname: "/specialist/[id]", params: params.diag ? { id: item.specialist_id, diag: params.diag } : { id: item.specialist_id } })
+              }
+              style={({ pressed }) => [styles.card, item.featured && styles.cardFeatured, pressed && { transform: [{ scale: 0.99 }] }]}
             >
-              {item.portfolio?.length ? <Image source={imageSource(item.portfolio[0].image)} style={styles.cover} contentFit="cover" /> : null}
-              <View style={styles.cardBody}>
-                <View style={styles.cardTop}>
-                  <Avatar uri={item.avatar} name={item.name} size={52} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <View style={styles.nameRow}>
-                      <Text style={styles.name} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      {item.verified && <VerifiedBadge small />}
-                    </View>
-                    {item.membership_active && (
-                      <View style={styles.available} testID={`specialist-available-${item.specialist_id}`}>
-                        <View style={styles.dot} />
-                        <Text style={styles.availableText}>{t("available")}</Text>
-                      </View>
-                    )}
-                  </View>
+              {item.featured ? (
+                <View style={styles.badge} testID={`specialist-featured-${item.specialist_id}`}>
+                  <Text style={styles.badgeText}>⭐ {t("featured_label")}</Text>
                 </View>
-                <Text style={styles.sub} numberOfLines={1}>
-                  {tradesLabel(item.categories, t)} · {t("turin")}
-                </Text>
-                {item.rating_avg != null && (
-                  <View style={styles.ratingRow} testID={`specialist-rating-${item.specialist_id}`}>
-                    <Stars value={item.rating_avg} size={13} />
-                    <Text style={styles.ratingText}>
-                      {item.rating_avg.toFixed(1).replace(".", lang === "it" || lang === "es" ? "," : ".")} ({item.reviews_count})
+              ) : null}
+              <View style={styles.cardTop}>
+                <Avatar uri={item.avatar} name={item.name} size={52} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {item.name}
                     </Text>
+                    {item.verified ? (
+                      <View style={styles.ok}>
+                        <Text style={styles.okText}>✔ {t("verified_short")}</Text>
+                      </View>
+                    ) : null}
                   </View>
-                )}
+                  <Text style={styles.sub} testID={`specialist-sub-${item.specialist_id}`}>
+                    {subLine(item)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
               </View>
             </Pressable>
           </Animated.View>
@@ -150,36 +142,29 @@ export default function Specialists() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  header: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  title: { fontSize: 28, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.6, paddingHorizontal: 8 },
-  search: { flexDirection: "row", alignItems: "center", gap: 8, height: 46, borderRadius: 12, backgroundColor: c.surfaceTertiary, paddingHorizontal: 14 },
-  searchInput: { flex: 1, fontSize: 15, color: c.onSurface, height: 46 },
-  chipRow: { height: 56, justifyContent: "center", borderBottomWidth: 1, borderBottomColor: c.divider },
-  chipContent: { paddingHorizontal: 16, gap: 8, alignItems: "center" },
-  chip: { height: 36, flexShrink: 0, paddingHorizontal: 14, borderRadius: 999, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, justifyContent: "center" },
-  chipOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
-  chipText: { fontSize: 14, fontWeight: "600", color: c.onSurfaceTertiary },
-  chipTextOn: { color: c.onBrandPrimary },
-  problemBanner: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: c.brandSecondary },
-  problemText: { flex: 1, color: c.onBrandSecondary, fontWeight: "600", fontSize: 13 },
-  skeleton: { height: 180, borderRadius: 20, backgroundColor: c.surfaceTertiary },
+  header: { paddingHorizontal: 16, gap: 12, paddingBottom: 10 },
+  title: { fontSize: 28, fontFamily: fonts.display, color: c.onSurface, letterSpacing: -0.6 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { height: 36, paddingHorizontal: 12, borderRadius: 999, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, justifyContent: "center" },
+  chipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  chipOn: { backgroundColor: c.surfaceInverse, borderColor: c.surfaceInverse },
+  chipText: { fontSize: 13, fontWeight: "600", color: c.onSurface },
+  chipTextOn: { color: c.onSurfaceInverse },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.onSurface },
+  zoneNote: { fontSize: 13, color: c.muted },
+  locBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: 32 },
+  locText: { fontSize: 13, color: c.brandTertiary, fontWeight: "600" },
+  skeleton: { height: 84, borderRadius: 18, backgroundColor: c.surfaceTertiary },
   empty: { alignItems: "center", padding: 32, gap: 12 },
   emptyText: { color: c.muted, textAlign: "center", fontSize: 15 },
-  card: { borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
-  cover: { width: "100%", height: 170, backgroundColor: c.surfaceTertiary },
-  cardBody: { padding: 16, gap: 4 },
+  card: { borderRadius: 18, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, padding: 14, gap: 6 },
+  cardFeatured: { borderWidth: 2, borderColor: c.brandPrimary, backgroundColor: "#FFFAF5" },
+  badge: { alignSelf: "flex-start", backgroundColor: c.brandPrimary, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText: { fontSize: 11, fontWeight: "800", color: c.onBrandPrimary },
   cardTop: { flexDirection: "row", gap: 12, alignItems: "center" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  available: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
-  availableText: { fontSize: 12, fontWeight: "700", color: c.success },
-  name: { fontSize: 17, fontWeight: "700", color: c.onSurface, flexShrink: 1 },
-  sub: { fontSize: 13, color: c.muted },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  ratingText: { fontSize: 13, color: c.onSurfaceTertiary, fontWeight: "600" },
-  thumbs: { flexDirection: "row", gap: 6 },
-  thumb: { flex: 1, height: 84, borderRadius: 10 },
-  stats: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: c.divider, paddingTop: 12 },
-  stat: { fontSize: 13, color: c.muted },
-  statBold: { fontWeight: "800", color: c.onSurface },
+  name: { fontSize: 16, fontFamily: fonts.display, color: c.onSurface, flexShrink: 1 },
+  ok: { backgroundColor: "#E7F6EC", borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
+  okText: { fontSize: 11, fontWeight: "700", color: "#16794A" },
+  sub: { fontSize: 13, color: c.muted, lineHeight: 18 },
 }));

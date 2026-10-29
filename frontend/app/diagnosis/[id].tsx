@@ -40,7 +40,7 @@ export default function Diagnosis() {
   const materials: any[] = d.difficulty === "expert" ? [] : d.materials || [];
   const tools: string[] = d.difficulty === "expert" ? [] : d.tools || [];
   const doneCount = Object.values(done).filter(Boolean).length;
-  const goPro = () => router.push({ pathname: "/specialists", params: { category: d.category } });
+  const goPro = () => router.push({ pathname: "/specialists", params: { category: d.category, diag: d.diagnosis_id } });
 
   return (
     <View style={styles.root}>
