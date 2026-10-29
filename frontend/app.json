@@ -38,10 +38,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/behappy-splash.png",
-          "imageWidth": 300,
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#F8F5EE"
+          "backgroundColor": "#0A1628"
         }
       ],
       [
