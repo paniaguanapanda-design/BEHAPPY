@@ -5,7 +5,7 @@ export type Lang = "es" | "it";
 
 const es = {
   app_tagline: "Diagnostica tu hogar con IA",
-  tab_scan: "Escanear", tab_specialists: "Expertos", tab_messages: "Mensajes", tab_profile: "Perfil",
+  tab_scan: "Escanear", tab_specialists: "Expertos", tab_stores: "Ferreterías", tab_messages: "Mensajes", tab_profile: "Perfil",
   login_title: "Arregla tu casa con una foto",
   login_sub: "Fotografía el problema, la IA te dice cómo resolverlo o te conecta con un especialista verificado.",
   email: "Correo electrónico", password: "Contraseña", name: "Nombre completo",
@@ -96,7 +96,7 @@ const es = {
 
 const it: typeof es = {
   app_tagline: "Diagnostica la tua casa con l'IA",
-  tab_scan: "Scansiona", tab_specialists: "Esperti", tab_messages: "Messaggi", tab_profile: "Profilo",
+  tab_scan: "Scansiona", tab_specialists: "Esperti", tab_stores: "Ferramenta", tab_messages: "Messaggi", tab_profile: "Profilo",
   login_title: "Ripara casa con una foto",
   login_sub: "Fotografa il problema: l'IA ti spiega come risolverlo o ti mette in contatto con un esperto verificato.",
   email: "Email", password: "Password", name: "Nome completo",

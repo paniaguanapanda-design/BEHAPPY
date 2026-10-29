@@ -21,6 +21,10 @@ export default function TabsLayout() {
           <NativeTabs.Trigger.Icon sf="person.2.fill" />
           <NativeTabs.Trigger.Label>{t("tab_specialists")}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="ferreterias">
+          <NativeTabs.Trigger.Icon sf="storefront.fill" />
+          <NativeTabs.Trigger.Label>{t("tab_stores")}</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
         <NativeTabs.Trigger name="messages">
           <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right.fill" />
           <NativeTabs.Trigger.Label>{t("tab_messages")}</NativeTabs.Trigger.Label>
@@ -57,6 +61,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: t("tab_scan"), tabBarButtonTestID: "tab-scan", tabBarIcon: icon("scan-circle", "scan-circle-outline") }} />
       <Tabs.Screen name="specialists" options={{ title: t("tab_specialists"), tabBarButtonTestID: "tab-specialists", tabBarIcon: icon("people", "people-outline") }} />
+      <Tabs.Screen name="ferreterias" options={{ title: t("tab_stores"), tabBarButtonTestID: "tab-stores", tabBarIcon: icon("storefront", "storefront-outline") }} />
       <Tabs.Screen name="messages" options={{ title: t("tab_messages"), tabBarButtonTestID: "tab-messages", tabBarIcon: icon("chatbubbles", "chatbubbles-outline") }} />
       <Tabs.Screen name="profile" options={{ title: t("tab_profile"), tabBarButtonTestID: "tab-profile", tabBarIcon: icon("person-circle", "person-circle-outline") }} />
     </Tabs>
