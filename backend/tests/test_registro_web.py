@@ -35,16 +35,18 @@ async def test_web_signup_free_month_starts_in_app(api):
     r = await api.post("/api/auth/register", headers=WEB, json={"email": "juan@example.com", "password": "secret123", "name": "Juan"})
     h = {"Authorization": f"Bearer {r.json()['session_token']}"}
     await make_profile(api, {**h, **WEB})
-    # visible en la lista aunque aun no tenga membresia
+    # sin suscripcion activa no sale en la lista
     client = await register(api, "cliente@example.com")
     names = [s["name"] for s in (await api.get("/api/specialists", headers=client)).json()]
-    assert "Mario Rossi" in names
+    assert "Mario Rossi" not in names
     assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
     await api.get("/api/auth/me", headers=h)  # la web no activa el mes
     assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
     await api.get("/api/auth/me", headers={**h, **APP})  # primera vez en la app
     m = (await api.get("/api/membership/me", headers=h)).json()
     assert m["active"] and m["source"] == "registro_web" and 29.9 < days_left(m["expires_at"]) <= 30
+    names = [s["name"] for s in (await api.get("/api/specialists", headers=client)).json()]
+    assert "Mario Rossi" in names  # con el mes activo ya sale
     await api.get("/api/auth/me", headers={**h, **APP})
     assert (await api.get("/api/membership/me", headers=h)).json()["expires_at"] == m["expires_at"]
 
@@ -56,7 +58,7 @@ async def test_app_signup_gets_no_web_promo(api):
     assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
 
 
-async def test_list_members_first_and_photo_required(api):
+async def test_list_only_members_with_photo(api):
     a = await register(api, "a@example.com")
     await make_profile(api, a, name="Sin membresia")
     b = await register(api, "b@example.com")
@@ -67,8 +69,8 @@ async def test_list_members_first_and_photo_required(api):
                                             "categories": ["plumbing"], "created_at": server.iso(server.now())})
     client = await register(api, "c@example.com")
     lst = (await api.get("/api/specialists", headers=client)).json()
-    assert [s["name"] for s in lst] == ["Con membresia", "Sin membresia"]
-    assert lst[0]["membership_active"] and not lst[1]["membership_active"]
+    assert [s["name"] for s in lst] == ["Con membresia"]
+    assert lst[0]["membership_active"]
     assert uid
 
 
