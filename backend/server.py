@@ -2605,9 +2605,17 @@ async def stripe_api(method: str, path: str, data: Optional[dict] = None) -> dic
     return body
 
 
+def stripe_key_id() -> str:
+    """Huella de la clave en uso: si se cambia de cuenta de Stripe (o de prueba a real) se vuelve a preparar todo."""
+    return hashlib.sha256(os.environ.get("STRIPE_SECRET_KEY", "").encode()).hexdigest()[:16]
+
+
 async def stripe_price(plan: str) -> str:
     """Id del precio de Stripe; si no existe se crea (producto 'Abbonamento specialista' + precio en EUR)."""
     cached = await db.meta.find_one({"_id": "stripe_prices"}) or {}
+    if cached.get("key") != stripe_key_id():
+        cached = {}
+        await db.meta.replace_one({"_id": "stripe_prices"}, {"_id": "stripe_prices", "key": stripe_key_id()}, upsert=True)
     if cached.get(plan):
         return cached[plan]
     found = (await stripe_api("GET", "prices", {"lookup_keys": [STRIPE_LOOKUP[plan]], "active": True})).get("data") or []
@@ -2631,7 +2639,7 @@ async def stripe_webhook_secret() -> Optional[str]:
     if os.environ.get("STRIPE_WEBHOOK_SECRET"):
         return os.environ["STRIPE_WEBHOOK_SECRET"]
     meta = await db.meta.find_one({"_id": "stripe_webhook"}) or {}
-    return meta.get("secret")
+    return meta.get("secret") if meta.get("key") == stripe_key_id() else None
 
 
 async def ensure_stripe_webhook() -> None:
@@ -2642,7 +2650,7 @@ async def ensure_stripe_webhook() -> None:
         return
     url = f"{base}/api/stripe/webhook"
     meta = await db.meta.find_one({"_id": "stripe_webhook"}) or {}
-    if meta.get("url") == url and meta.get("secret"):
+    if meta.get("url") == url and meta.get("secret") and meta.get("key") == stripe_key_id():
         return
     try:
         existing = (await stripe_api("GET", "webhook_endpoints", {"limit": 100})).get("data") or []
@@ -2651,8 +2659,8 @@ async def ensure_stripe_webhook() -> None:
                 await stripe_api("DELETE", f"webhook_endpoints/{ep['id']}")
         ep = await stripe_api("POST", "webhook_endpoints", {"url": url, "enabled_events": STRIPE_EVENTS,
                                                             "description": "Be Happy: abbonamenti specialisti"})
-        await db.meta.update_one({"_id": "stripe_webhook"}, {"$set": {"url": url, "secret": ep["secret"],
-                                                                     "id": ep["id"]}}, upsert=True)
+        await db.meta.update_one({"_id": "stripe_webhook"}, {"$set": {"url": url, "secret": ep["secret"], "id": ep["id"],
+                                                                     "key": stripe_key_id()}}, upsert=True)
         logger.info("Webhook de Stripe creado: %s", url)
     except Exception as e:
         logger.warning("webhook de Stripe no creado: %s", e)
