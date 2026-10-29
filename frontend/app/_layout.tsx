@@ -13,6 +13,7 @@ import { I18nProvider } from "@/src/i18n";
 import { ToastProvider } from "@/src/toast";
 import { AppSplash } from "@/src/AppSplash";
 import { CameraPermissionPrompt } from "@/src/CameraPermissionPrompt";
+import { takeAfterLogin } from "@/src/postLogin";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/revenuecat";
 
 LogBox.ignoreAllLogs(true);
@@ -37,8 +38,13 @@ function Gate() {
   useEffect(() => {
     if (loading) return;
     const onLogin = segments[0] === "login";
-    if (!user && !onLogin) router.replace("/login");
-    else if (user && onLogin) router.replace("/");
+    const isPublic = onLogin || segments[0] === "pro"; // the specialists page is readable before signing in
+    if (!user && !isPublic) router.replace("/login");
+    else if (user && isPublic) {
+      const next = takeAfterLogin();
+      router.replace("/");
+      if (next) router.push(next as any); // e.g. a new specialist goes straight to their profile form
+    }
   }, [user, loading, segments, router]);
 
   if (loading || !splashDone) return <AppSplash />;

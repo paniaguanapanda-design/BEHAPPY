@@ -1,10 +1,11 @@
-import React, { useState } from "react";
-import { Linking, Pressable, Text, TextInput, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth";
 import { api } from "@/src/api";
 import { useI18n } from "@/src/i18n";
@@ -12,9 +13,12 @@ import { useToast } from "@/src/toast";
 import { Button } from "@/src/ui";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
+import { setAfterLogin, takeProIntent } from "@/src/postLogin";
 
-const LOGO = require("@/assets/images/behappy-logo.png");
-const HERO = "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1000&q=80";
+const LOGO = require("@/assets/images/splash-icon.png");
+// The same photo as the website: a phone scanning a dripping faucet.
+const HERO = require("@/assets/images/login-hero.jpg");
+const GOOGLE_G = require("@/assets/images/google-g.png");
 
 export default function Login() {
   const styles = useStyles();
@@ -31,6 +35,20 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [gBusy, setGBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [pro, setPro] = useState(false); // came from the specialists page: after signing up, open the profile form
+  const router = useRouter();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (takeProIntent()) {
+        setPro(true);
+        setMode("up");
+      }
+    }, []),
+  );
+  // Read by the auth gate right after signing in.
+  setAfterLogin(pro && mode === "up" ? "/specialist-form" : null);
 
   const submit = async () => {
     if (!email || !password || (mode === "up" && !name)) return toast(t("required"), "error");
@@ -87,17 +105,22 @@ export default function Login() {
     <View style={styles.root}>
       <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
-          <Image source={{ uri: HERO }} style={StyleSheetAbs} contentFit="cover" />
-          <LinearGradient colors={["transparent", colors.surfaceInverse]} style={StyleSheetAbs} />
-          <View style={[styles.heroTop, { paddingTop: insets.top + 12 }]}>
-            <View style={styles.logo} testID="app-logo">
+          <Image source={HERO} style={StyleSheetAbs} contentFit="cover" contentPosition={{ left: "62%", top: "40%" }} />
+          <LinearGradient
+            colors={["rgba(10,22,40,0.6)", "rgba(10,22,40,0.2)", colors.surfaceInverse]}
+            locations={[0, 0.4, 1]}
+            style={StyleSheetAbs}
+          />
+          <View style={[styles.heroTop, { paddingTop: insets.top + 8 }]}>
+            <View style={styles.logo} testID="app-logo" accessible accessibilityLabel="BeHappy">
               <Image source={LOGO} style={styles.logoImg} contentFit="contain" />
-              <Text style={styles.logoText}>BE HAPPY</Text>
+              <Text style={styles.logoText}>BeHappy</Text>
             </View>
+            <LangToggle dark />
           </View>
           <View style={styles.heroBottom}>
-            <Text style={styles.title}>{t("login_title")}</Text>
-            <Text style={styles.sub}>{t("login_sub")}</Text>
+            <Text style={styles.title}>{pro && mode === "up" ? t("pro_signup_title") : t("login_title")}</Text>
+            <Text style={styles.sub}>{pro && mode === "up" ? t("pro_signup_sub") : t("login_sub")}</Text>
           </View>
         </View>
 
@@ -155,8 +178,28 @@ export default function Login() {
           </View>
         ) : (
         <View style={styles.form}>
+          <Pressable
+            testID="google-login-button"
+            onPress={google}
+            disabled={gBusy}
+            style={({ pressed }) => [styles.google, { transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+          >
+            {gBusy ? (
+              <ActivityIndicator color={colors.onSurface} />
+            ) : (
+              <>
+                <Image source={GOOGLE_G} style={styles.gIcon} contentFit="contain" />
+                <Text style={styles.googleText}>{t("continue_google")}</Text>
+              </>
+            )}
+          </Pressable>
+          <View style={styles.orRow}>
+            <View style={styles.line} />
+            <Text style={styles.or}>{t("or_email")}</Text>
+            <View style={styles.line} />
+          </View>
           {mode === "up" && (
-            <TextInput testID="register-name-input" style={styles.input} placeholder={t("name")} placeholderTextColor={colors.muted} value={name} onChangeText={setName} />
+            <TextInput testID="register-name-input" style={styles.input} placeholder={t("name")} placeholderTextColor={colors.muted} autoComplete="name" value={name} onChangeText={setName} />
           )}
           <TextInput
             testID="login-email-input"
@@ -165,34 +208,61 @@ export default function Login() {
             placeholderTextColor={colors.muted}
             autoCapitalize="none"
             keyboardType="email-address"
+            autoComplete="email"
             value={email}
             onChangeText={setEmail}
           />
-          <TextInput
-            testID="login-password-input"
-            style={styles.input}
-            placeholder={t("password")}
-            placeholderTextColor={colors.muted}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            onSubmitEditing={submit}
-          />
+          <View>
+            <TextInput
+              testID="login-password-input"
+              style={[styles.input, styles.pwInput]}
+              placeholder={t("password")}
+              placeholderTextColor={colors.muted}
+              secureTextEntry={!showPw}
+              autoCapitalize="none"
+              autoComplete={mode === "up" ? "new-password" : "current-password"}
+              value={password}
+              onChangeText={setPassword}
+              onSubmitEditing={submit}
+            />
+            <Pressable
+              testID="toggle-password-visibility"
+              onPress={() => setShowPw((v) => !v)}
+              style={styles.eye}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t(showPw ? "hide_password" : "show_password")}
+            >
+              <Ionicons name={showPw ? "eye-off-outline" : "eye-outline"} size={22} color={colors.muted} />
+            </Pressable>
+          </View>
           {mode === "in" && (
             <Pressable testID="forgot-password-link" onPress={() => setMode("forgot")} style={styles.forgot} hitSlop={8}>
               <Text style={styles.forgotText}>{t("forgot_password")}</Text>
             </Pressable>
           )}
           <Button testID="login-submit-button" title={mode === "in" ? t("sign_in") : t("sign_up")} onPress={submit} loading={busy} />
-          <View style={styles.orRow}>
-            <View style={styles.line} />
-            <Text style={styles.or}>{t("or")}</Text>
-            <View style={styles.line} />
-          </View>
-          <Button testID="google-login-button" variant="ghost" icon="logo-google" title={t("continue_google")} onPress={google} loading={gBusy} />
           <Pressable testID="toggle-auth-mode" onPress={() => setMode(mode === "in" ? "up" : "in")} style={styles.switch}>
             <Text style={styles.switchText}>{mode === "in" ? t("no_account") : t("have_account")}</Text>
           </Pressable>
+
+          {!pro && (
+            <Pressable
+              testID="pro-card"
+              onPress={() => router.push("/pro")}
+              style={({ pressed }) => [styles.pro, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+            >
+              <View style={styles.proIcon}>
+                <Ionicons name="briefcase-outline" size={20} color={colors.onBrandPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.proTitle}>{t("pro_card_title")}</Text>
+                <Text style={styles.proText}>{t("pro_card_text")}</Text>
+              </View>
+              <Ionicons name="arrow-forward" size={20} color={colors.brandPrimary} />
+            </Pressable>
+          )}
+
           <View style={styles.legalRow}>
             <Text style={styles.legalText} onPress={() => Linking.openURL("https://www.be-happyapp.com/privacy")}>
               {lang === "it" ? "Privacy" : "Privacidad"}
@@ -201,10 +271,6 @@ export default function Login() {
             <Text style={styles.legalText} onPress={() => Linking.openURL("https://www.be-happyapp.com/termini")}>
               {lang === "it" ? "Termini" : "Términos"}
             </Text>
-          </View>
-          <View style={styles.langBottom}>
-            <Ionicons name="language" size={18} color={colors.muted} />
-            <LangToggle />
           </View>
         </View>
         )}
@@ -217,19 +283,31 @@ const StyleSheetAbs = { position: "absolute" as const, top: 0, left: 0, right: 0
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  hero: { height: 380, justifyContent: "space-between", overflow: "hidden" },
-  heroTop: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
-  logo: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.surface, paddingLeft: 6, paddingRight: 16, paddingVertical: 6, borderRadius: 999 },
-  logoImg: { width: 32, height: 32, borderRadius: 16 },
-  logoText: { color: c.onSurface, fontWeight: "800", fontSize: 16, letterSpacing: 0.5 },
-  heroBottom: { padding: 24, gap: 8, alignItems: "center" },
-  title: { color: c.onSurfaceInverse, fontSize: 32, fontFamily: fonts.display, letterSpacing: -0.8, lineHeight: 36, textAlign: "center" },
-  sub: { color: c.onSurfaceInverse, opacity: 0.85, fontSize: 15, lineHeight: 21, textAlign: "center" },
-  langBottom: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 },
-  form: { padding: 24, gap: 12 },
+  hero: { height: 340, justifyContent: "space-between", overflow: "hidden", backgroundColor: c.surfaceInverse },
+  heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16 },
+  logo: { flexDirection: "row", alignItems: "center", gap: 8 },
+  logoImg: { width: 34, height: 34 },
+  logoText: { color: c.onSurfaceInverse, fontSize: 22, fontFamily: fonts.display, letterSpacing: -0.3 },
+  heroBottom: { paddingHorizontal: 22, paddingBottom: 22, gap: 8 },
+  title: { color: c.onSurfaceInverse, fontSize: 34, fontFamily: fonts.display, letterSpacing: -0.8, lineHeight: 36 },
+  sub: { color: c.onSurfaceInverse, opacity: 0.82, fontSize: 15, lineHeight: 21 },
+  form: { paddingHorizontal: 20, paddingTop: 20, gap: 12 },
+  google: {
+    height: 54,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surfaceSecondary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  gIcon: { width: 20, height: 20 },
+  googleText: { color: c.onSurface, fontSize: 16, fontWeight: "600" },
   input: {
     height: 52,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: c.border,
     backgroundColor: c.surfaceSecondary,
@@ -237,9 +315,25 @@ const useStyles = makeStyles((c) => ({
     fontSize: 16,
     color: c.onSurface,
   },
-  orRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 4 },
+  pwInput: { paddingRight: 52 },
+  eye: { position: "absolute", right: 6, top: 4, width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  orRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 2 },
   line: { flex: 1, height: 1, backgroundColor: c.divider },
   or: { color: c.muted, fontSize: 13 },
+  pro: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 18,
+    padding: 14,
+    marginTop: 4,
+  },
+  proIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  proTitle: { fontSize: 16, fontFamily: fonts.display, color: c.onSurface },
+  proText: { fontSize: 13, color: c.muted, marginTop: 2 },
   legalRow: { flexDirection: "row", justifyContent: "center", marginTop: 4 },
   legalText: { color: c.muted, fontSize: 13, textDecorationLine: "underline" },
   switch: { alignItems: "center", paddingVertical: 12, minHeight: 44 },
