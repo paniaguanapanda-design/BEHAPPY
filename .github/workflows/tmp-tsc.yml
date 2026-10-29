@@ -1,0 +1,24 @@
+name: tmp tsc log
+on:
+  push:
+    branches: [especialistas-pro]
+    paths: [".github/workflows/tmp-tsc.yml"]
+permissions:
+  contents: write
+jobs:
+  tsc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd frontend && yarn install --frozen-lockfile --ignore-scripts && (npx tsc --noEmit > ../tsc.txt 2>&1 || true)
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan ci-logs
+          git rm -rq --cached .
+          git add -f tsc.txt
+          git commit -qm "tsc log"
+          git push -f origin ci-logs
