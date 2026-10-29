@@ -1533,23 +1533,6 @@
     invariant "^2.2.4"
     nullthrows "^1.1.1"
 
-"@revenuecat/purchases-js-hybrid-mappings@19.12.0":
-  version "19.12.0"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js-hybrid-mappings/-/purchases-js-hybrid-mappings-19.12.0.tgz#307758364969bfc55c2c2ed5d30f7db9e65ef89f"
-  integrity sha512-voCGoFDc1qIkktDNuDE9etOSlIt3EdooNHw/n5ZNyJu+8owJ/D8Tl014g3zJhOlVXn03aLchBs/zGhW6uSvFTA==
-  dependencies:
-    "@revenuecat/purchases-js" "1.70.0"
-
-"@revenuecat/purchases-js@1.70.0":
-  version "1.70.0"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js/-/purchases-js-1.70.0.tgz#6880d6f6b8b4270f1b07026ccbe0a4054ef275a9"
-  integrity sha512-07e1rzlk9bMbMTthJduhcOwbQQhvFZJiFKskmoqOVnEYmQaRq/PayxtYgHhpK5UnmqOhzqRUzXfNqpvUggEP4w==
-
-"@revenuecat/purchases-typescript-internal@19.12.0":
-  version "19.12.0"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-typescript-internal/-/purchases-typescript-internal-19.12.0.tgz#3287b8fcd7fd00b77c7d87e758d332aadae6912e"
-  integrity sha512-oDI505W2IX54wmmZu0M4N6ZLRnFvS5FlFruvFAZXbsZpybksUnZHqgiyMVfsD8Bnd2EloxDu7RK7QNAVMT6fLg==
-
 "@rtsao/scc@^1.1.0":
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@rtsao/scc/-/scc-1.1.0.tgz#927dd2fae9bc3361403ac2c7a00c32ddce9ad7e8"
@@ -3222,13 +3205,6 @@ expo-constants@57.0.22, expo-constants@~57.0.22:
   integrity sha512-+mBjnzMWMKIrQa7BP7LTDRC0W7cI+q12/sZns4HzVQJGzgGoAdRJSTEKiObxIw/3EswKXlESkRob8upiL95Q4A==
   dependencies:
     "@expo/env" "~2.4.3"
-
-expo-device@~57.0.2:
-  version "57.0.2"
-  resolved "https://registry.yarnpkg.com/expo-device/-/expo-device-57.0.2.tgz#e6f015372e508d78c7d1ffb1e0a9f0bd366521ac"
-  integrity sha512-1A0/FICR3CgrH43FeiDQP3l5eHDmiMoh4EjXfhfoHHkMgdBQdyD0kwDWskiGZlQ3E0Nd0LHkCFH6vJ1ofm/jow==
-  dependencies:
-    ua-parser-js "^0.7.33"
 
 expo-doctor@1.19.8:
   version "1.19.8"
@@ -5464,14 +5440,6 @@ react-native-maps@1.27.2:
   dependencies:
     "@types/geojson" "^7946.0.13"
 
-react-native-purchases@10.14.0:
-  version "10.14.0"
-  resolved "https://registry.yarnpkg.com/react-native-purchases/-/react-native-purchases-10.14.0.tgz#3a4af270fd73e3e3f245075dd7a94e3a8d860a0d"
-  integrity sha512-yGyFrMs39ysA5gMOZcu7R0qV6wUlBSRycViQLjd8re6LBKvg5howcTQTiBqf3XcoDkjK6/5qYlzVEds8vNg/Zg==
-  dependencies:
-    "@revenuecat/purchases-js-hybrid-mappings" "19.12.0"
-    "@revenuecat/purchases-typescript-internal" "19.12.0"
-
 react-native-reanimated@4.5.1:
   version "4.5.1"
   resolved "https://registry.yarnpkg.com/react-native-reanimated/-/react-native-reanimated-4.5.1.tgz#be81ed3a96bf70baeeccdc24d3350883099b7dd3"
@@ -6360,11 +6328,6 @@ typescript@6.0.3:
   version "6.0.3"
   resolved "https://registry.yarnpkg.com/typescript/-/typescript-6.0.3.tgz#90251dc007916e972786cb94d74d15b185577d21"
   integrity sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==
-
-ua-parser-js@^0.7.33:
-  version "0.7.41"
-  resolved "https://registry.yarnpkg.com/ua-parser-js/-/ua-parser-js-0.7.41.tgz#9f6dee58c389e8afababa62a4a2dc22edb69a452"
-  integrity sha512-O3oYyCMPYgNNHuO7Jjk3uacJWZF8loBgwrfd/5LE/HyZ3lUIOdniQ7DNXJcIgZbwioZxk0fLfI4EVnetdiX5jg==
 
 ua-parser-js@^1.0.35:
   version "1.0.41"
