@@ -1,3 +1,4 @@
+// Shared bits of the specialist tools (profile, zone, stats, chat).
 import React from "react";
 import { Text, View } from "react-native";
 import { useI18n } from "@/src/i18n";
