@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "868451159892",
+    "project_id": "behappy-2ec4c",
+    "storage_bucket": "behappy-2ec4c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:868451159892:android:5211fd8511056b6fd7c2c1",
+        "android_client_info": {
+          "package_name": "com.paniaguanapanda.behappy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFCX2CX6OuCsv13arO51ZvJWOWIwqCf_E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

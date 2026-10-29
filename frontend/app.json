@@ -21,6 +21,7 @@
         "backgroundColor": "#F8F5EE"
       },
       "package": "com.paniaguanapanda.behappy",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
