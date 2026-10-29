@@ -894,7 +894,8 @@ async def list_specialists(request: Request, category: Optional[str] = None, q: 
                                   {"$set": {"last_loc": {"lat": round(lat, 3), "lng": round(lng, 3), "at": iso(now())}}})
     # Salen los especialistas con foto de perfil que trabajan en la zona del cliente: destacados, disponibles ahora y
     # con membresia primero. Los ocultos por reportes no salen.
-    flt = {"avatar": {"$type": "string"}, "hidden": {"$ne": True}}
+    # Solo especialistas con la suscripcion activa (se paga en la web): sin ella no ofrecen el servicio.
+    flt = {"avatar": {"$type": "string"}, "hidden": {"$ne": True}, "membership_expires_at": {"$gt": iso(now())}}
     if category and category != "all":
         flt["categories"] = category
     if q:

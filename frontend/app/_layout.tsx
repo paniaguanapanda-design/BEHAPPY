@@ -15,15 +15,8 @@ import { AppSplash } from "@/src/AppSplash";
 import { CameraPermissionPrompt } from "@/src/CameraPermissionPrompt";
 import { takeAfterLogin } from "@/src/postLogin";
 import { usePushSetup } from "@/src/push";
-import { initializeRevenueCat, SubscriptionProvider } from "@/src/revenuecat";
 
 LogBox.ignoreAllLogs(true);
-
-try {
-  initializeRevenueCat();
-} catch (err) {
-  console.warn("RevenueCat unavailable:", err);
-}
 
 function Gate() {
   const { user, loading } = useAuth();
@@ -52,12 +45,12 @@ function Gate() {
 
   if (loading || !splashDone) return <AppSplash />;
   return (
-    <SubscriptionProvider userId={user?.user_id ?? null}>
+    <>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="scan" options={{ animation: "slide_from_bottom" }} />
       </Stack>
       {user && <CameraPermissionPrompt />}
-    </SubscriptionProvider>
+    </>
   );
 }
 

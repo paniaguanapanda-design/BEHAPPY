@@ -186,8 +186,10 @@ export default function Chat() {
         ) : null}
         {!iAmClient && c?.specialist_can_reply === false ? (
           <View style={[styles.lockBar, { paddingBottom: insets.bottom + 12 }]} testID="chat-membership-required">
-            <Text style={styles.lockText}>{t("reply_needs_membership")}</Text>
-            <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="chat-activate-membership-button" />
+            <View style={styles.lockRow}>
+              <Text style={styles.lockEmoji}>⏸️</Text>
+              <Text style={[styles.lockText, { flex: 1 }]}>{t("reply_needs_membership")}</Text>
+            </View>
           </View>
         ) : (
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
@@ -256,6 +258,8 @@ const useStyles = makeStyles((c) => ({
   reqTitle: { fontWeight: "800", color: c.onBrandSecondary, fontSize: 13 },
   reqText: { color: c.onBrandSecondary, fontSize: 14, lineHeight: 20 },
   lockBar: { gap: 10, paddingHorizontal: 16, paddingTop: 12, backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border },
+  lockRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  lockEmoji: { fontSize: 20 },
   lockText: { fontSize: 14, color: c.onSurfaceTertiary, lineHeight: 20 },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 12, paddingTop: 8, backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border },
   input: { flex: 1, minHeight: 44, maxHeight: 120, borderRadius: 22, backgroundColor: c.surfaceTertiary, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: c.onSurface },

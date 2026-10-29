@@ -208,3 +208,12 @@ async def test_settings_quick_replies_and_validation(api, pushes):
     assert z["zone"]["label"] == "San Salvario" and z["urgent"] is True
     pub = (await api.get(f"/api/specialists/{s['specialist_id']}", headers=h)).json()
     assert pub["schedule_label_it"] == "lun–sab 8–19" and "lat" not in (pub["zone"] or {})
+
+
+async def test_wall_only_lists_specialists_with_active_subscription(api, pushes):
+    h, s = await pro(api, "attivo@x.it")
+    h2 = await register(api, "nonpaga@x.it")
+    await make_profile(api, h2, name="Senza Abbonamento")
+    c = await register(api, "cliente@x.it")
+    out = (await api.get("/api/specialists", headers=c)).json()
+    assert [x["specialist_id"] for x in out] == [s["specialist_id"]]

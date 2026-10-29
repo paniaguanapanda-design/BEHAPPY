@@ -143,7 +143,6 @@ export default function SpecialistProfile() {
           {isMe && !s.membership_active && (
             <View style={styles.hiddenBanner} testID="hidden-profile-banner">
               <Text style={styles.body}>{t("hidden_profile")}</Text>
-              <Button title={t("activate_membership")} icon="ribbon" onPress={() => router.push("/membership")} testID="activate-membership-button" />
             </View>
           )}
           {isMe && s.membership_active && !s.portfolio?.length && (
