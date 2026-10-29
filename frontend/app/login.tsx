@@ -41,14 +41,15 @@ export default function Login() {
 
   useFocusEffect(
     useCallback(() => {
-      if (takeProIntent()) {
+      const intent = takeProIntent();
+      if (intent) {
         setPro(true);
-        setMode("up");
+        setMode(intent);
       }
     }, []),
   );
   // Read by the auth gate right after signing in.
-  setAfterLogin(pro && mode === "up" ? "/specialist-form" : null);
+  setAfterLogin(pro ? "/specialist-form" : null);
 
   const submit = async () => {
     if (!email || !password || (mode === "up" && !name)) return toast(t("required"), "error");
@@ -119,8 +120,8 @@ export default function Login() {
             <LangToggle dark />
           </View>
           <View style={styles.heroBottom}>
-            <Text style={styles.title}>{pro && mode === "up" ? t("pro_signup_title") : t("login_title")}</Text>
-            <Text style={styles.sub}>{pro && mode === "up" ? t("pro_signup_sub") : t("login_sub")}</Text>
+            <Text style={styles.title}>{pro ? t(mode === "up" ? "pro_signup_title" : "pro_signin_title") : t("login_title")}</Text>
+            <Text style={styles.sub}>{pro ? t(mode === "up" ? "pro_signup_sub" : "pro_signin_sub") : t("login_sub")}</Text>
           </View>
         </View>
 

@@ -9,11 +9,12 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider, useAuth } from "@/src/auth";
-import { I18nProvider } from "@/src/i18n";
+import { I18nProvider, useI18n } from "@/src/i18n";
 import { ToastProvider } from "@/src/toast";
 import { AppSplash } from "@/src/AppSplash";
 import { CameraPermissionPrompt } from "@/src/CameraPermissionPrompt";
 import { takeAfterLogin } from "@/src/postLogin";
+import { usePushSetup } from "@/src/push";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/revenuecat";
 
 LogBox.ignoreAllLogs(true);
@@ -29,6 +30,8 @@ function Gate() {
   const segments = useSegments();
   const router = useRouter();
   const [splashDone, setSplashDone] = useState(false);
+  const { lang } = useI18n();
+  usePushSetup(user?.user_id ?? null, lang);
 
   useEffect(() => {
     const h = setTimeout(() => setSplashDone(true), 1600);

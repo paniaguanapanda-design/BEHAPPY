@@ -91,7 +91,14 @@ export default function Pro() {
           </View>
 
           <Button testID="pro-start" title={t("pro_cta")} icon="briefcase-outline" onPress={start} />
-          <Pressable testID="pro-have-account" onPress={backToLogin} style={styles.link}>
+          <Pressable
+            testID="pro-have-account"
+            onPress={() => {
+              setProIntent("in");
+              backToLogin();
+            }}
+            style={styles.link}
+          >
             <Text style={styles.linkText}>{t("pro_have_account")}</Text>
           </Pressable>
         </View>
