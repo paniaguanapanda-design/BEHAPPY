@@ -49,7 +49,9 @@ export async function pushAllowed(): Promise<boolean> {
 export function usePushSetup(userId: string | null, lang: string) {
   useEffect(() => {
     if (!userId || Platform.OS === "web") return;
-    pushAllowed().then((ok) => ok && sendToken(lang).catch(() => {}));
+    pushAllowed().then((ok) => {
+      if (ok) sendToken(lang).catch(() => {});
+    });
     const open = (data: any) => {
       if (data?.conversation_id) router.push({ pathname: "/chat/[id]", params: { id: String(data.conversation_id) } });
       else if (data?.type === "nearby") router.push("/pro-stats");
