@@ -1594,6 +1594,74 @@ async def revenuecat_sync(request: Request):
     return await membership_payload(user["user_id"])
 
 
+# ---------------- Membresia pagada en la web (Stripe) ----------------
+# La web (www.be-happyapp.com) cobra la membresia con Stripe. El servidor no habla con Stripe: la web
+# recibe los avisos de Stripe (firmados) y llama aqui con la clave secreta WEB_PROXY_KEY.
+
+def require_web_proxy(request: Request) -> None:
+    import hmac
+    key = os.environ.get("WEB_PROXY_KEY", "")
+    if not key or not hmac.compare_digest(request.headers.get("x-behappy-proxy-key", ""), key):
+        raise HTTPException(403, "Forbidden")
+
+
+@api.get("/membership/web-context")
+async def membership_web_context(request: Request):
+    """Lo que la pagina de abbonamento necesita saber de la cuenta que ha iniciado sesion en la web."""
+    require_web_proxy(request)
+    user = await current_user(request)
+    m = await membership_payload(user["user_id"])
+    return {"user_id": user["user_id"], "email": user.get("email"), "name": user.get("name"),
+            "is_specialist": bool(user.get("specialist_id")),
+            "promo_pending": user.get("promo_mes_gratis") == "pendiente" and PROMO_WEB,
+            "membership": m}
+
+
+class StripeSyncIn(BaseModel):
+    user_id: str = Field(max_length=64)
+    plan: str = Field(max_length=10)
+    status: str = Field(max_length=30)
+    period_end: int  # segundos unix: hasta cuando esta pagada (o hasta cuando dura la prueba)
+    ended_at: Optional[int] = None
+    subscription_id: str = Field(max_length=100)
+    customer_id: str = Field(default="", max_length=100)
+    promo_used: bool = False
+
+
+STRIPE_LIVE = {"active", "trialing", "past_due"}
+
+
+@api.post("/membership/stripe-sync")
+async def membership_stripe_sync(body: StripeSyncIn, request: Request):
+    """Stripe confirmo un pago, una renovacion o una baja: la membresia dura hasta el final del periodo pagado."""
+    require_web_proxy(request)
+    if body.plan not in PLANS:
+        raise HTTPException(400, "Invalid plan")
+    user = await db.users.find_one({"user_id": body.user_id}, {"_id": 0, "user_id": 1})
+    if not user:
+        raise HTTPException(404, "User not found")
+    if body.promo_used:
+        # El mes gratis de la web se ha usado como prueba de Stripe: ya no se suma otra vez al entrar en la app.
+        await db.users.update_one({"user_id": body.user_id, "promo_mes_gratis": "pendiente"},
+                                  {"$set": {"promo_mes_gratis": "aplicada", "promo_aplicada_en": iso(now()),
+                                            "promo_via": "stripe_trial"}})
+    current = await db.memberships.find_one({"user_id": body.user_id}, {"_id": 0}) or {}
+    if body.status in STRIPE_LIVE:
+        exp = datetime.fromtimestamp(body.period_end, tz=timezone.utc)
+    else:
+        # Cancelada del todo (no solo "al final del periodo"): termina cuando lo diga Stripe, nunca se alarga.
+        if current.get("source") != "stripe" or current.get("stripe_subscription_id") not in (None, body.subscription_id):
+            return await membership_payload(body.user_id)
+        end = body.ended_at or int(now().timestamp())
+        exp = min(datetime.fromtimestamp(end, tz=timezone.utc), datetime.fromisoformat(current["expires_at"])) \
+            if current.get("expires_at") else datetime.fromtimestamp(end, tz=timezone.utc)
+    await activate_membership(body.user_id, body.plan, "stripe", exp)
+    await db.memberships.update_one({"user_id": body.user_id}, {"$set": {
+        "stripe_subscription_id": body.subscription_id, "stripe_customer_id": body.customer_id or None,
+        "stripe_status": body.status}})
+    return await membership_payload(body.user_id)
+
+
 # ---------------- Ferreterias: inscripcion desde la web, verificacion automatica y mapa ----------------
 # Una ferreteria se inscribe en la web (be-happyapp.com/ferramenta). Sale en el mapa de la app sola si pasa
 # tres comprobaciones: correo confirmado con codigo, Partita IVA activa en VIES (registro IVA de la UE) y
