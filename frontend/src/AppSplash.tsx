@@ -22,6 +22,8 @@ import { useI18n } from "@/src/i18n";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const ICON = require("@/assets/images/splash-icon.png");
+const BG = require("@/assets/images/splash-bg.jpg"); // navy, lighter in the middle
+const GLOW = require("@/assets/images/splash-glow.png"); // soft orange light behind the house
 // Same size and place as the native splash (app.json, imageWidth 200): the hand-off is seamless.
 const ICON_SIZE = 200;
 const FRAME = 252; // viewfinder around the house
@@ -56,9 +58,20 @@ export function AppSplash() {
   const hop = useSharedValue(1);
   const wiggle = useSharedValue(0);
   const spark = useSharedValue(0);
+  const bg = useSharedValue(reduced ? 1 : 0);
+  const glow = useSharedValue(reduced ? 0.7 : 0);
 
   useEffect(() => {
     if (reduced) return;
+    // The native splash is flat navy: the light fades in so the hand-off has no jump.
+    bg.set(withTiming(1, { duration: 300, easing: EASE_OUT }));
+    glow.set(
+      withSequence(
+        withTiming(0.45, { duration: 400, easing: EASE_OUT }),
+        withDelay(T_HAPPY - 400, withTiming(1, { duration: 160, easing: EASE_OUT })),
+        withTiming(0.7, { duration: 500, easing: EASE_OUT }),
+      ),
+    );
     corners.set(withDelay(T_CORNERS, withTiming(1, { duration: 420, easing: EASE_OUT })));
     scan.set(withDelay(T_SCAN, withTiming(1, { duration: 420, easing: EASE_IN_OUT })));
     hop.set(
@@ -79,8 +92,10 @@ export function AppSplash() {
       ),
     );
     spark.set(withDelay(T_HAPPY, withTiming(1, { duration: 650, easing: Easing.linear })));
-  }, [reduced, corners, scan, hop, wiggle, spark]);
+  }, [reduced, corners, scan, hop, wiggle, spark, bg, glow]);
 
+  const bgStyle = useAnimatedStyle(() => ({ opacity: bg.get() }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.get(), transform: [{ scale: 0.9 + glow.get() * 0.15 }] }));
   const houseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: hop.get() }, { rotate: `${wiggle.get()}deg` }],
   }));
@@ -92,8 +107,14 @@ export function AppSplash() {
   return (
     <View style={styles.root} testID="app-splash">
       <StatusBar style="light" />
+      <Animated.View pointerEvents="none" style={[styles.fill, bgStyle]}>
+        <Image source={BG} style={styles.fill} contentFit="cover" />
+      </Animated.View>
 
       <View style={styles.stage}>
+        <Animated.View pointerEvents="none" style={[styles.glow, glowStyle]}>
+          <Image source={GLOW} style={styles.fill} contentFit="contain" />
+        </Animated.View>
         {(["tl", "tr", "bl", "br"] as const).map((pos) => (
           <Corner key={pos} pos={pos} progress={corners} color={colors.brandPrimary} />
         ))}
@@ -181,6 +202,8 @@ function Spark({ x, y, size, d, progress, color }: { x: number; y: number; size:
 const useStyles = makeStyles((c) => ({
   // Must match the native splash background (app.json, expo-splash-screen backgroundColor).
   root: { flex: 1, backgroundColor: c.surfaceInverse, alignItems: "center", justifyContent: "center" },
+  fill: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  glow: { position: "absolute", width: 420, height: 420, left: (FRAME - 420) / 2, top: (FRAME - 420) / 2 },
   stage: { width: FRAME, height: FRAME, alignItems: "center", justifyContent: "center" },
   house: { width: ICON_SIZE, height: ICON_SIZE },
   houseImg: { width: "100%", height: "100%" },
