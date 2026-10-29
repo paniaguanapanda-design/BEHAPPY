@@ -25,15 +25,16 @@ type RowProps = {
   testID: string;
   danger?: boolean;
   isNew?: boolean;
+  emoji?: string; // specialist rows use emojis, as in the approved reference image
 };
 
-function Row({ icon, title, sub, onPress, testID, danger, isNew }: RowProps) {
+function Row({ icon, title, sub, onPress, testID, danger, isNew, emoji }: RowProps) {
   const styles = useStyles();
   const { colors } = useTheme();
   return (
     <Pressable testID={testID} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
       <View style={[styles.rowIcon, danger && { backgroundColor: colors.surfaceTertiary }]}>
-        <Ionicons name={icon} size={20} color={danger ? colors.error : colors.brandPrimary} />
+        {emoji ? <Text style={styles.emoji}>{emoji}</Text> : <Ionicons name={icon} size={20} color={danger ? colors.error : colors.brandPrimary} />}
       </View>
       <View style={{ flex: 1 }}>
         <View style={styles.rowTitleLine}>
@@ -204,13 +205,13 @@ export default function Profile() {
         {isSpec ? (
           <>
             <View style={styles.group}>
-              <Row testID="my-specialist-profile-row" icon="id-card-outline" title={t("my_specialist_profile")} onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: user!.specialist_id! } })} />
+              <Row testID="my-specialist-profile-row" icon="id-card-outline" emoji="🪪" title={t("my_specialist_profile")} onPress={() => router.push({ pathname: "/specialist/[id]", params: { id: user!.specialist_id! } })} />
               <View style={styles.sep} />
-              <Row testID="edit-specialist-row" icon="create-outline" title={t("edit_profile_short")} onPress={() => router.push("/specialist-form")} />
+              <Row testID="edit-specialist-row" icon="create-outline" emoji="✏️" title={t("edit_profile_short")} onPress={() => router.push("/specialist-form")} />
               <View style={styles.sep} />
               <Row
                 testID="zone-row"
-                icon="location-outline"
+                icon="location-outline" emoji="📍"
                 title={t("zone_hours")}
                 sub={st ? zoneSub(st, t, lang) : undefined}
                 isNew={seenZone.isNew}
@@ -219,7 +220,7 @@ export default function Profile() {
               <View style={styles.sep} />
               <Row
                 testID="quick-replies-row"
-                icon="flash-outline"
+                icon="flash-outline" emoji="⚡"
                 title={t("quick_replies")}
                 sub={st ? t("quick_replies_count").replace("{n}", String(st.quick_replies.length)) : undefined}
                 isNew={seenReplies.isNew}
@@ -228,7 +229,7 @@ export default function Profile() {
               <View style={styles.sep} />
               <Row
                 testID="alerts-row"
-                icon="notifications-outline"
+                icon="notifications-outline" emoji="🔔"
                 title={t("alerts_title")}
                 sub={st ? (st.alerts.enabled ? `${t("alerts_on")} · ${alertsCats(st, t)}` : t("alerts_off")) : undefined}
                 isNew={seenAlerts.isNew}
@@ -238,7 +239,7 @@ export default function Profile() {
             <View style={styles.group}>
               <Row
                 testID="membership-row"
-                icon="ribbon-outline"
+                icon="ribbon-outline" emoji="🏅"
                 title={t("membership")}
                 sub={membership.data ? (membership.data.active ? `${t("active_until")} ${fmtDate(membership.data.expires_at!, lang)}` : t("mb_inactive")) : undefined}
                 onPress={() => router.push("/membership")}
@@ -246,7 +247,7 @@ export default function Profile() {
               <View style={styles.sep} />
               <Row
                 testID="featured-row"
-                icon="star-outline"
+                icon="star-outline" emoji="⭐"
                 title={t("featured_title")}
                 sub={
                   st?.featured_until
@@ -344,6 +345,7 @@ const useStyles = makeStyles((c) => ({
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 60 },
   rowIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   rowTitle: { fontSize: 16, fontWeight: "600", color: c.onSurface, flexShrink: 1 },
+  emoji: { fontSize: 18 },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   avail: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "#E7F6EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginTop: 4 },
   availOff: { backgroundColor: c.surfaceTertiary },
