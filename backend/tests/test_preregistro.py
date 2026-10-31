@@ -23,8 +23,21 @@ def prereg(email, especialidad="idraulica", estado="reservada"):
             "zona": "Torino", "estado": "preregistrado", "promo": {"tipo": "1_mes_gratis", "estado": estado}}
 
 
+# Provincias falsas para las pruebas (sin llamar a OpenStreetMap): el punto conocido mas cercano.
+PROVINCES = {"TO": ("Torino", 45.0703, 7.6869), "MI": ("Milano", 45.4642, 9.1900), "RM": ("Roma", 41.9028, 12.4964)}
+TORINO_POINT = (45.0703, 7.6869)
+
+
+async def fake_province_at(lat, lng):
+    if not (36 <= lat <= 47.2 and 6.5 <= lng <= 18.6):
+        return None  # fuera de Italia
+    code = min(PROVINCES, key=lambda c: (PROVINCES[c][1] - lat) ** 2 + (PROVINCES[c][2] - lng) ** 2)
+    return {"code": code, "name": PROVINCES[code][0]}
+
+
 @pytest.fixture(autouse=True)
-async def clean_db():
+async def clean_db(monkeypatch):
+    monkeypatch.setattr(server, "province_at", fake_province_at)
     for name in await server.db.list_collection_names():
         await server.db[name].drop()
     await server.startup()
@@ -39,18 +52,28 @@ async def api():
         yield c
 
 
-async def register(api, email):
+async def register(api, email, at=TORINO_POINT):
+    """Crea una cuenta; por defecto la persona esta en la provincia de Torino (at=None: sin provincia)."""
     r = await api.post("/api/auth/register", json={"email": email, "password": "secret123", "name": "Mario"})
     assert r.status_code == 200, r.text
-    return {"Authorization": f"Bearer {r.json()['session_token']}"}
+    h = {"Authorization": f"Bearer {r.json()['session_token']}"}
+    if at:
+        z = await api.put("/api/me/zone", headers=h, json={"lat": at[0], "lng": at[1]})
+        assert z.status_code == 200, z.text
+    return h
 
 
-async def make_profile(api, headers, **extra):
+async def make_profile(api, headers, zone="TO", **extra):
+    """Perfil de especialista; por defecto trabaja en la provincia de Torino (zone=None: sin zona)."""
     uid = (await api.get("/api/auth/me", headers=headers)).json()["user_id"]
     body = {"name": "Mario Rossi", "categories": ["plumbing"], "phone": "+39 333 1234567",
             "avatar": f"behappy/uploads/{uid}/cara.jpg", **extra}
     r = await api.post("/api/specialists", headers=headers, json=body)
     assert r.status_code == 200, r.text
+    if zone:
+        name, lat, lng = PROVINCES[zone]
+        await server.db.specialists.update_one({"specialist_id": r.json()["specialist_id"]}, {"$set": {"zone": {
+            "lat": lat, "lng": lng, "radius_km": 15, "label": name, "province": {"code": zone, "name": name}}}})
     return r.json()
 
 

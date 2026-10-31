@@ -7,7 +7,9 @@ from test_preregistro import api, clean_db, make_profile, register, server  # no
 
 TORINO = (45.0703, 7.6869)
 LINGOTTO = (45.0310, 7.6650)  # ~4,6 km del centro
-IVREA = (45.4670, 7.8760)  # ~47 km
+IVREA = (45.4670, 7.8760)  # ~47 km, tambien provincia de Torino
+MILANO = (45.4642, 9.1900)
+ROMA = (41.9028, 12.4964)
 
 
 @pytest.fixture
@@ -30,9 +32,9 @@ def pushes(monkeypatch):
     return sent
 
 
-async def pro(api, email, **extra):
+async def pro(api, email, zone="TO", **extra):
     h = await register(api, email)
-    s = await make_profile(api, h, **extra)
+    s = await make_profile(api, h, zone=zone, **extra)
     await server.db.specialists.update_one({"specialist_id": s["specialist_id"]},
                                            {"$set": {"membership_expires_at": server.iso(server.now() + timedelta(days=30))}})
     return h, s
@@ -51,19 +53,59 @@ async def settle():
         await asyncio.sleep(0.01)
 
 
-async def test_wall_only_shows_specialists_working_in_the_client_zone(api, pushes):
+async def test_wall_only_shows_specialists_of_the_client_province(api, pushes):
     h1, s1 = await pro(api, "centro@x.it")
     h2, s2 = await pro(api, "ivrea@x.it")
+    h3, s3 = await pro(api, "milano@x.it")
     await set_zone(api, h1, TORINO, radius=8)
     await set_zone(api, h2, IVREA, radius=10)
-    c = await register(api, "cliente@x.it")
+    await set_zone(api, h3, MILANO, radius=50)
+    c = await register(api, "cliente@x.it", at=None)
+    # sin provincia no sale nadie
+    assert (await api.get("/api/specialists?category=plumbing", headers=c)).json() == []
+    # con su ubicacion: su provincia es Torino, salen los de Torino (Ivrea incluido) ordenados por distancia
     r = await api.get(f"/api/specialists?category=plumbing&lat={LINGOTTO[0]}&lng={LINGOTTO[1]}", headers=c)
     ids = [x["specialist_id"] for x in r.json()]
-    assert ids == [s1["specialist_id"]]
+    assert ids == [s1["specialist_id"], s2["specialist_id"]]
     assert 4 <= r.json()[0]["distance_km"] <= 5.5
-    # sin posicion se ven todos
+    assert r.json()[0]["zone"]["province"] == {"code": "TO", "name": "Torino"}
+    # sin posicion se usa la provincia guardada
     r = await api.get("/api/specialists?category=plumbing", headers=c)
-    assert len(r.json()) == 2
+    assert [x["specialist_id"] for x in r.json()] == [s1["specialist_id"], s2["specialist_id"]]
+    # elige Milano a mano: solo el de Milano
+    assert (await api.put("/api/me/zone", headers=c, json={"lat": MILANO[0], "lng": MILANO[1]})).json()["province"]["code"] == "MI"
+    r = await api.get(f"/api/specialists?category=plumbing&lat={LINGOTTO[0]}&lng={LINGOTTO[1]}", headers=c)
+    assert [x["specialist_id"] for x in r.json()] == [s3["specialist_id"]]
+    assert (await api.get("/api/me/zone", headers=c)).json()["province"]["code"] == "MI"
+
+
+async def test_chat_only_within_the_same_province(api, pushes):
+    hr, sr = await pro(api, "roma@x.it", zone="RM")
+    ht, st = await pro(api, "torino@x.it")
+    c = await register(api, "cliente@x.it")  # provincia de Torino
+    r = await api.post("/api/conversations", headers=c, json={"specialist_id": sr["specialist_id"]})
+    assert r.status_code == 403
+    assert (await api.post("/api/conversations", headers=c, json={"specialist_id": st["specialist_id"]})).status_code == 200
+    # sin provincia: primero tiene que elegirla
+    nop = await register(api, "senza@x.it", at=None)
+    assert (await api.post("/api/conversations", headers=nop, json={"specialist_id": st["specialist_id"]})).status_code == 409
+    # una conversacion que ya existia se respeta aunque el cliente cambie de provincia
+    await api.put("/api/me/zone", headers=c, json={"lat": ROMA[0], "lng": ROMA[1]})
+    assert (await api.post("/api/conversations", headers=c, json={"specialist_id": st["specialist_id"]})).status_code == 200
+    # un especialista sin zona no sale en el muro ni se le puede escribir
+    hz, sz = await pro(api, "senzazona@x.it", zone=None)
+    c2 = await register(api, "altro@x.it")
+    assert sz["specialist_id"] not in [x["specialist_id"] for x in (await api.get("/api/specialists", headers=c2)).json()]
+    assert (await api.post("/api/conversations", headers=c2, json={"specialist_id": sz["specialist_id"]})).status_code == 403
+
+
+async def test_zone_outside_italy_is_rejected(api, pushes):
+    h, s = await pro(api, "fuori@x.it", zone=None)
+    r = await api.put("/api/specialists/me/zone", headers=h, json={"lat": 48.85, "lng": 2.35, "radius_km": 10,
+                                                                    "days": [1], "from": "08:00", "to": "18:00"})
+    assert r.status_code == 422
+    c = await register(api, "c@x.it", at=None)
+    assert (await api.put("/api/me/zone", headers=c, json={"lat": 48.85, "lng": 2.35})).status_code == 422
 
 
 async def test_available_now_follows_the_schedule(api, pushes):
@@ -132,9 +174,15 @@ async def test_nearby_diagnosis_alert_respects_zone_trade_and_switch(api, pushes
     await set_zone(api, h, TORINO, radius=8)
     h2, s2 = await pro(api, "lontano@x.it")
     await set_zone(api, h2, IVREA, radius=5)
+    h3, s3 = await pro(api, "milano@x.it")
+    await set_zone(api, h3, MILANO, radius=50)
     doc = {"diagnosis_id": "diag_x", "user_id": "u_cliente", "category": "plumbing", "title_it": "Scarico intasato"}
     await server.notify_nearby_diagnosis(doc, *LINGOTTO)
     assert len(pushes) == 1 and "a San Salvario" in pushes[0]["body"]["it"]
+    # una diagnosis en Milano solo avisa al de Milano (aunque el radio de 50 km no llegue a Torino de todas formas)
+    await server.notify_nearby_diagnosis({**doc, "diagnosis_id": "diag_m"}, *MILANO)
+    assert len(pushes) == 2 and pushes[-1]["user_id"] != pushes[0]["user_id"]
+    pushes.pop()
     assert pushes[0]["title"]["it"] == "Richiesta di idraulica vicino a te"
     await api.put("/api/specialists/me/alerts", headers=h, json={"enabled": False, "categories": ["plumbing"]})
     await server.notify_nearby_diagnosis(doc, *LINGOTTO)
@@ -196,7 +244,7 @@ async def test_diagnosis_travels_to_the_chat(api, pushes):
 
 
 async def test_settings_quick_replies_and_validation(api, pushes):
-    h, s = await pro(api, "set@x.it")
+    h, s = await pro(api, "set@x.it", zone=None)
     st = (await api.get("/api/specialists/me/settings?lang=it", headers=h)).json()
     assert len(st["quick_replies"]) == 5 and st["zone"]["set"] is False
     r = await api.put("/api/specialists/me/quick-replies", headers=h, json={"items": ["  Arrivo   subito ", "", "Ok"]})
@@ -206,6 +254,7 @@ async def test_settings_quick_replies_and_validation(api, pushes):
     assert bad.status_code == 400
     z = await set_zone(api, h, TORINO, radius=12, days=(1, 2, 3, 4, 5, 6), frm="08:00", to="19:00", urgent=True)
     assert z["zone"]["label"] == "San Salvario" and z["urgent"] is True
+    assert z["zone"]["province"] == {"code": "TO", "name": "Torino"} and z["zone"]["set"] is True
     pub = (await api.get(f"/api/specialists/{s['specialist_id']}", headers=h)).json()
     assert pub["schedule_label_it"] == "lun–sab 8–19" and "lat" not in (pub["zone"] or {})
 
