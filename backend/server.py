@@ -657,14 +657,39 @@ async def get_file(path: str, request: Request):
 
 # ---------------- AI Diagnosis ----------------
 DIAG_PROMPT = """You are an expert home repair technician. Analyze the photo of a household problem.
-Respond ONLY with valid JSON (no markdown). All text fields in {lang}, except title_es (Spanish) and title_it (Italian). Schema:
+Respond ONLY with valid JSON (no markdown). All text fields in {lang}, except title_es (Spanish) and title_it (Italian).
+
+BEFORE ANYTHING ELSE, look carefully at the photo:
+1. Identify EXACTLY the object or element shown. Be specific: "electric water heater" is not "gas boiler", "sink trap" is not "pipe",
+   "wall socket" is not "switch". If you cannot tell which one it is, say so instead of guessing.
+2. Describe objectively what you SEE: its state and position (e.g. "water heater detached from the wall and resting on the floor",
+   "water dripping under the sink trap", "socket blackened around the holes"). Do not invent damage you cannot see.
+3. Base everything only on the photo and the user's note. Never assume local or generic practices
+   (never answer things like "in this city it is usually replaced"), and never mention prices or shops.
+
+THEN decide the recommended action, with judgment:
+- "reposition": the object is detached, fallen, loose or out of place but looks intact -> it must be put back and fixed securely.
+- "repair": it has a repairable fault (gasket, cartridge, cable, hinge, seal, clogged part...).
+- "replace": ONLY if it is visibly damaged beyond repair (cracked tank, burnt, broken body, heavy corrosion) or clearly unsafe.
+  Explain in "action_reason" what you see that makes repair impossible.
+- "inspect": the photo is not enough to decide; say what must be checked.
+The action (WHAT must be done) is independent of the difficulty (WHO should do it). A fallen water heater or gas boiler is usually
+"reposition" + "expert": a professional must re-hang it and check fixings and connections, but it does NOT need to be replaced just
+because it fell. In that case when_to_call_pro must say that a specialist can probably re-hang it, and that replacement is only needed
+if they find real damage.
+
+Schema:
 {{
  "is_home_problem": true/false,
  "is_appliance": true/false,
- "title_es": "short problem name in Spanish",
- "title_it": "short problem name in Italian",
+ "object": "exact name of the object/element, in {lang}",
+ "observed": "objective description of what is visible in the photo, in {lang}",
+ "recommended_action": "reposition" | "repair" | "replace" | "inspect",
+ "action_reason": "1-2 sentences: why this action, based on what you see",
+ "title_es": "specific title in Spanish: object + state + action, e.g. 'Calentador descolgado de la pared – volver a fijar'",
+ "title_it": "specific title in Italian: object + state + action, e.g. 'Scaldabagno staccato dalla parete – da ricollocare'",
  "category": one of {cats},
- "description": "2-3 sentences explaining what is wrong and likely cause",
+ "description": "2-3 sentences: first what is seen (observed), then the likely cause and the recommended action",
  "difficulty": "easy" | "medium" | "expert",
  "safety_warnings": ["..."],
  "materials": [{{"name": "...", "quantity": "..."}}],
@@ -673,15 +698,22 @@ Respond ONLY with valid JSON (no markdown). All text fields in {lang}, except ti
  "estimated_time": "e.g. 1-2 h",
  "when_to_call_pro": "short sentence"
 }}
+Steps must match the recommended action: for "reposition" explain how to put it back and fix it securely, for "repair" how to repair
+the faulty part, for "replace" how to remove the old one and fit the new one.
 Difficulty rules:
 - easy: a non-expert can safely fix it alone. Give 4-8 clear steps.
 - medium: a handy person can try it. Give 4-8 clear steps; when_to_call_pro explains when to stop and call a specialist.
-- expert: needs a professional (gas, mains electricity, structural, refrigerant, anything risky). steps, materials and tools MUST be empty arrays. Never give repair instructions; safety_warnings only says what to avoid and how to stay safe until the specialist arrives.
+- expert: needs a professional (gas, mains electricity, structural, refrigerant, heavy appliances fixed to the wall such as water
+  heaters and boilers, anything risky). steps, materials and tools MUST be empty arrays. Never give repair instructions;
+  safety_warnings only says what to avoid and how to stay safe until the specialist arrives (e.g. close the water/gas valve,
+  switch off the breaker).
 If the problem is a household appliance (washing machine, oven, fridge, dishwasher, dryer, microwave or any other appliance) set is_appliance true and leave steps, materials and tools empty.
 If the image is not a home problem set is_home_problem false and still fill title/description explaining that.
 {extra}"""
 
-TRANSLATABLE = ["description", "safety_warnings", "materials", "tools", "steps", "estimated_time", "when_to_call_pro"]
+ACTIONS = ("reposition", "repair", "replace", "inspect")
+
+TRANSLATABLE = ["object", "observed", "action_reason", "description", "safety_warnings", "materials", "tools", "steps", "estimated_time", "when_to_call_pro"]
 
 
 APPLIANCE_WORDS = ["lavadora", "horno", "nevera", "frigor", "lavavajillas", "secadora", "microondas", "electrodom",
@@ -699,14 +731,19 @@ def normalize_diagnosis(r: dict) -> dict:
         r["category"] = "unknown"  # never force an unknown trade into masonry
     diff = r.get("difficulty")
     r["difficulty"] = "expert" if diff in ("hard", "expert") else diff if diff in ("easy", "medium") else "medium"
-    # Seguridad: el gas siempre es experto; lo electrico solo puede ser "facil" si la IA lo marca asi
-    gas_risk = re.search(r"\b(gas|caldaia|caldera|boiler|stufa|estufa|metano)\b", text) is not None
+    # Seguridad: gas, calderas y calentadores (pesados, con agua/gas/luz) siempre son experto; lo electrico solo puede ser "facil" si la IA lo marca asi
+    gas_risk = re.search(r"\b(gas|caldaia|caldera|boiler|stufa|estufa|metano|scaldabagno|scaldacqua|calentador|termo)\b",
+                         text + " " + str(r.get("object") or "").lower()) is not None
     if gas_risk or (r.get("category") == "electrical" and r["difficulty"] != "easy"):
         r["difficulty"] = "expert"
     if r["difficulty"] == "expert":
         r["steps"], r["materials"], r["tools"] = [], [], []
     for k in ("steps", "materials", "tools", "safety_warnings"):
         r[k] = r.get(k) or []
+    if r.get("recommended_action") not in ACTIONS:
+        r["recommended_action"] = "inspect"
+    for k in ("object", "observed", "action_reason"):
+        r[k] = str(r.get(k) or "")
     r["title_es"] = r.get("title_es") or r.get("title") or ""
     r["title_it"] = r.get("title_it") or r.get("title") or ""
     return r
