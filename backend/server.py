@@ -911,7 +911,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
                                          "portfolio": [], "verified": False, "verification_status": "none",
                                          "rating_avg": 0.0, "reviews_count": 0, "created_at": iso(now())})
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "specialist", "specialist_id": sid}})
-        if from_signed_web(request) and PROMO_WEB and not user.get("promo_mes_gratis"):
+        if client_kind(request) == "web" and PROMO_WEB and not user.get("promo_mes_gratis"):
             # Registrado desde la web: el mes gratis empieza la primera vez que entra en la app
             await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"promo_mes_gratis": "pendiente"}})
     user["specialist_id"] = sid
@@ -1538,16 +1538,6 @@ def client_kind(request: Request) -> str:
     key = os.environ.get("WEB_PROXY_KEY", "")
     supplied = request.headers.get("x-behappy-proxy-key", "")
     return "web" if key and hmac.compare_digest(supplied, key) else ""
-
-
-def from_signed_web(request: Request) -> bool:
-    """La peticion viene de verdad de la web: cabecera 'web' + la clave secreta WEB_PROXY_KEY que solo conoce Vercel.
-    Sin la clave, cualquiera podria escribir 'X-BeHappy-Client: web' y llevarse el mes gratis."""
-    import hmac
-    if client_kind(request) != "web":
-        return False
-    key = os.environ.get("WEB_PROXY_KEY", "")
-    return not key or hmac.compare_digest(request.headers.get("x-behappy-proxy-key", ""), key)
 
 
 async def start_web_promo(user: dict, request: Request) -> None:
