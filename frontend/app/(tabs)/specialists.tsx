@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
@@ -34,18 +34,16 @@ export default function Specialists() {
   const prov = useMyProvince();
   const province = prov.data?.province ?? null;
   const [changing, setChanging] = useState(false);
-  const [autoSaving, setAutoSaving] = useState(false);
+  const auto = useMutation({ mutationFn: (p: { lat: number; lng: number }) => saveMyProvince(p.lat, p.lng) });
+  const autoMutate = auto.mutate;
   const autoTried = useRef(false);
   // Primera vez con la ubicacion ya permitida: su provincia sale sola, sin preguntar.
   useEffect(() => {
     if (!prov.isSuccess || province || !pos || autoTried.current) return;
     autoTried.current = true;
-    setAutoSaving(true);
-    saveMyProvince(pos.lat, pos.lng)
-      .catch(() => {})
-      .finally(() => setAutoSaving(false));
-  }, [prov.isSuccess, province, pos]);
-  const showPicker = prov.isSuccess && (changing || (!province && !autoSaving));
+    autoMutate(pos);
+  }, [prov.isSuccess, province, pos, autoMutate]);
+  const showPicker = prov.isSuccess && (changing || (!province && !auto.isPending));
 
   const q = useQuery({
     queryKey: ["specialists", cat, availOnly, province?.code, pos?.lat.toFixed(2), pos?.lng.toFixed(2)],
