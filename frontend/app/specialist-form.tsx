@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -20,6 +20,8 @@ async function pick(): Promise<ImagePicker.ImagePickerAsset | null> {
   return r.canceled ? null : r.assets[0];
 }
 
+type SpecialistFields = { name: string; bio: string; phone: string; whatsapp: string };
+
 export default function SpecialistForm() {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -30,26 +32,26 @@ export default function SpecialistForm() {
   const toast = useToast();
   const me = useQuery({ queryKey: ["specialist-me"], queryFn: () => api<any>("/specialists/me"), enabled: !!user?.specialist_id, retry: false });
 
-  const [f, setF] = useState({ name: user?.name || "", bio: "", phone: "", whatsapp: "" });
-  const [cats, setCats] = useState<string[]>([]);
-  const [subs, setSubs] = useState<string[]>([]);
+  const [formEdits, setFormEdits] = useState<Partial<SpecialistFields>>({});
+  const f: SpecialistFields = {
+    name: me.data?.name ?? user?.name ?? "",
+    bio: me.data?.bio ?? "",
+    phone: me.data?.phone ?? "",
+    whatsapp: me.data?.whatsapp ?? "",
+    ...formEdits,
+  };
+  const [catsOverride, setCats] = useState<string[] | null>(null);
+  const cats: string[] = catsOverride ?? me.data?.categories ?? [];
+  const [subsOverride, setSubs] = useState<string[] | null>(null);
+  const subs: string[] = subsOverride ?? me.data?.subtrades ?? [];
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [docImg, setDocImg] = useState<string | null>(null);
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarOverride, setAvatar] = useState<string | null | undefined>(undefined);
+  const avatar = avatarOverride === undefined ? me.data?.avatar ?? null : avatarOverride;
 
-  useEffect(() => {
-    const s = me.data;
-    if (s) {
-      setF({ name: s.name, bio: s.bio || "", phone: s.phone || "", whatsapp: s.whatsapp || "" });
-      setCats(s.categories || []);
-      setSubs(s.subtrades || []);
-      setAvatar(s.avatar || null);
-    }
-  }, [me.data]);
-
-  const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+  const set = (k: keyof SpecialistFields) => (v: string) => setFormEdits((p) => ({ ...p, [k]: v }));
 
   const upload = async (key: string): Promise<string | null> => {
     const a = await pick();
@@ -74,6 +76,10 @@ export default function SpecialistForm() {
       await api("/specialists", { body: { ...f, categories: cats, subtrades: subs, avatar } });
       await refreshUser();
       await me.refetch();
+      setFormEdits({});
+      setCats(null);
+      setSubs(null);
+      setAvatar(undefined);
       queryClient.invalidateQueries({ queryKey: ["specialists"] });
       toast(t("saved"));
     } catch (e: any) {
@@ -158,7 +164,7 @@ export default function SpecialistForm() {
           {CATEGORIES.map((c) => {
             const on = cats.includes(c);
             return (
-              <Pressable key={c} testID={`form-category-${c}`} onPress={() => setCats((p) => (on ? p.filter((x) => x !== c) : [...p, c]))} style={[styles.chip, on && styles.chipOn]}>
+              <Pressable key={c} testID={`form-category-${c}`} onPress={() => setCats(on ? cats.filter((x) => x !== c) : [...cats, c])} style={[styles.chip, on && styles.chipOn]}>
                 <Text style={[styles.chipText, on && styles.chipTextOn]}>{t(`cat_${c}`)}</Text>
               </Pressable>
             );
@@ -171,7 +177,7 @@ export default function SpecialistForm() {
               {SUBTRADES[g].map((st) => {
                 const on = subs.includes(st);
                 return (
-                  <Pressable key={st} testID={`form-subtrade-${st}`} onPress={() => setSubs((p) => (on ? p.filter((x) => x !== st) : [...p, st]))} style={[styles.chip, on && styles.chipOn]}>
+                  <Pressable key={st} testID={`form-subtrade-${st}`} onPress={() => setSubs(on ? subs.filter((x) => x !== st) : [...subs, st])} style={[styles.chip, on && styles.chipOn]}>
                     <Text style={[styles.chipText, on && styles.chipTextOn]}>{t(`sub_${st}`)}</Text>
                   </Pressable>
                 );

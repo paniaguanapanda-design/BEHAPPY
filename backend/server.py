@@ -1530,8 +1530,14 @@ PROMO_WEB = os.environ.get("PROMO_MES_GRATIS_WEB", "true").strip().lower() != "f
 
 
 def client_kind(request: Request) -> str:
-    """'web' (www.be-happyapp.com), 'app' o '' segun la cabecera que envia cada cliente."""
-    return (request.headers.get("x-behappy-client") or "").strip().lower()
+    """Solo acepta como web las peticiones firmadas por el proxy de confianza."""
+    kind = (request.headers.get("x-behappy-client") or "").strip().lower()
+    if kind != "web":
+        return kind
+    import hmac
+    key = os.environ.get("WEB_PROXY_KEY", "")
+    supplied = request.headers.get("x-behappy-proxy-key", "")
+    return "web" if key and hmac.compare_digest(supplied, key) else ""
 
 
 async def start_web_promo(user: dict, request: Request) -> None:

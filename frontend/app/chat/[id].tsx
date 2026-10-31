@@ -11,7 +11,7 @@ import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { useToast } from "@/src/toast";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
-import { Avatar, Button } from "@/src/ui";
+import { Avatar } from "@/src/ui";
 import { timeLabel } from "@/src/time";
 import { queryClient } from "@/src/query-client";
 import { ReportSheet, SPECIALIST_REASONS } from "@/src/ReportSheet";

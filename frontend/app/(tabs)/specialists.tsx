@@ -22,13 +22,12 @@ export default function Specialists() {
   const router = useRouter();
   const { t, lang } = useI18n();
   const params = useLocalSearchParams<{ category?: string; diag?: string }>();
-  const [cat, setCat] = useState<string>(params.category || "");
+  const [categoryOverride, setCategoryOverride] = useState<{ param?: string; value: string } | null>(null);
+  const cat = categoryOverride && categoryOverride.param === params.category ? categoryOverride.value : params.category || "";
   const [availOnly, setAvailOnly] = useState(false);
   const me = useMyPosition();
 
-  useEffect(() => {
-    if (params.category) setCat(params.category);
-  }, [params.category]);
+  const setCat = (value: string) => setCategoryOverride({ param: params.category, value });
 
   const pos = me.pos;
   // Toda Italia por provincias: solo salen especialistas de la provincia del cliente.

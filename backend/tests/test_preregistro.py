@@ -1,7 +1,4 @@
-"""Pruebas del mes gratis para especialistas pre-registrados en la web.
-
-Necesitan un MongoDB de pruebas: MONGO_URL=mongodb://localhost:27017 DB_NAME=behappy_test JWT_SECRET=x pytest backend/tests
-"""
+"""Pruebas backend; requieren las dependencias de requirements-test.txt y un MongoDB de pruebas."""
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -12,7 +9,7 @@ import pytest
 
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "behappy_test")
-os.environ.setdefault("JWT_SECRET", "test-secret")
+os.environ.setdefault("JWT_SECRET", "test-secret-for-pytest-more-than-32-bytes")
 os.environ["GOOGLE_CLIENT_IDS"] = "test-client"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -38,6 +35,9 @@ async def fake_province_at(lat, lng):
 @pytest.fixture(autouse=True)
 async def clean_db(monkeypatch):
     monkeypatch.setattr(server, "province_at", fake_province_at)
+    monkeypatch.setattr(server, "S3_BUCKET", None)
+    monkeypatch.setattr(server, "ON_RENDER", False)
+    monkeypatch.setenv("WEB_PROXY_KEY", "test-web-proxy-key")
     for name in await server.db.list_collection_names():
         await server.db[name].drop()
     await server.startup()

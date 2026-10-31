@@ -5,7 +5,8 @@ import pytest
 
 from test_preregistro import api, clean_db, days_left, make_profile, register, server  # noqa: F401
 
-WEB = {"X-BeHappy-Client": "web"}
+WEB = {"X-BeHappy-Client": "web", "X-BeHappy-Proxy-Key": "test-web-proxy-key"}
+SPOOFED_WEB = {"X-BeHappy-Client": "web"}
 APP = {"X-BeHappy-Client": "app"}
 
 
@@ -54,6 +55,13 @@ async def test_web_signup_free_month_starts_in_app(api):
 async def test_app_signup_gets_no_web_promo(api):
     h = await register(api, "app@example.com")
     await make_profile(api, {**h, **APP})
+    await api.get("/api/auth/me", headers={**h, **APP})
+    assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
+
+
+async def test_spoofed_web_header_cannot_grant_free_month(api):
+    h = await register(api, "spoofed-web@example.com")
+    await make_profile(api, {**h, **SPOOFED_WEB})
     await api.get("/api/auth/me", headers={**h, **APP})
     assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
 
