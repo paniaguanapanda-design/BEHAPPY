@@ -22,7 +22,8 @@ const MIN_KM = 1;
 const MAX_KM = 30;
 const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
 
-// Where the specialist works (centre + radius) and when: clients outside the zone don't see them in the list.
+// Where the specialist works and when. The map point sets their province (only clients of that province see them);
+// the radius is for nearby-diagnosis alerts, always inside the province.
 export default function ProZone() {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -122,6 +123,20 @@ export default function ProZone() {
           </View>
         </View>
         {Maps ? <Text style={styles.hint}>{t("zone_move_map")}</Text> : null}
+
+        <View style={styles.card} testID="zone-province">
+          {q.data?.zone?.province ? (
+            <>
+              <Text style={styles.note}>{t("prov_work_in")}</Text>
+              <Text style={styles.cardBold}>
+                {q.data.zone.province.name} ({q.data.zone.province.code})
+              </Text>
+              <Text style={styles.note}>{t("prov_work_note")}</Text>
+            </>
+          ) : (
+            <Text style={styles.note}>{t("prov_work_unset")}</Text>
+          )}
+        </View>
 
         <View style={styles.card}>
           <View style={styles.between}>
