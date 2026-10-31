@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, PanResponder, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -17,10 +17,21 @@ import { useMyPosition } from "@/src/position";
 
 const HAS_MAPS_KEY = Boolean(Constants.expoConfig?.extra?.hasMapsKey);
 const Maps: typeof import("react-native-maps") | null =
+  // The native map is not evaluated in web builds.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Platform.OS === "web" || !HAS_MAPS_KEY ? null : require("react-native-maps");
 const MIN_KM = 1;
 const MAX_KM = 30;
 const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
+
+type ZoneEdits = {
+  center: { lat: number; lng: number };
+  radius: number;
+  days: number[];
+  from: string;
+  to: string;
+  urgent: boolean;
+};
 
 // Where the specialist works and when. The map point sets their province (only clients of that province see them);
 // the radius is for nearby-diagnosis alerts, always inside the province.
@@ -33,36 +44,20 @@ export default function ProZone() {
   const toast = useToast();
   const me = useMyPosition();
   const q = useQuery({ queryKey: ["pro-settings", lang], queryFn: () => api<any>(`/specialists/me/settings?lang=${lang}`) });
-  const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
-  const [radius, setRadius] = useState(8);
-  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
-  const [from, setFrom] = useState("08:00");
-  const [to, setTo] = useState("19:00");
-  const [urgent, setUrgent] = useState(false);
+  const [edits, setEdits] = useState<Partial<ZoneEdits>>({});
+  const storedCenter = q.data ? { lat: q.data.zone.lat, lng: q.data.zone.lng } : null;
+  const center = edits.center ?? (q.data?.zone.set ? storedCenter : me.pos ?? storedCenter);
+  const radius = edits.radius ?? Math.round(q.data?.zone.radius_km ?? 8);
+  const days: number[] = edits.days ?? q.data?.schedule.days ?? [1, 2, 3, 4, 5, 6];
+  const from = edits.from ?? q.data?.schedule.from ?? "08:00";
+  const to = edits.to ?? q.data?.schedule.to ?? "19:00";
+  const urgent = edits.urgent ?? q.data?.urgent ?? false;
   const [picker, setPicker] = useState<null | "from" | "to">(null);
   const [busy, setBusy] = useState(false);
-  const loaded = useRef(false);
 
   useEffect(() => {
     markSeen("pro_zone");
   }, []);
-
-  useEffect(() => {
-    const st = q.data;
-    if (!st || loaded.current) return;
-    loaded.current = true;
-    setCenter({ lat: st.zone.lat, lng: st.zone.lng });
-    setRadius(Math.round(st.zone.radius_km));
-    setDays(st.schedule.days);
-    setFrom(st.schedule.from);
-    setTo(st.schedule.to);
-    setUrgent(st.urgent);
-  }, [q.data]);
-
-  // First time (zone never saved): start from where the specialist is now.
-  useEffect(() => {
-    if (q.data && !q.data.zone.set && me.pos) setCenter(me.pos);
-  }, [q.data, me.pos]);
 
   const save = async () => {
     if (!center) return;
@@ -102,7 +97,7 @@ export default function ProZone() {
             <Maps.default
               style={StyleSheetAbs}
               initialRegion={{ latitude: center.lat, longitude: center.lng, latitudeDelta: 0.25, longitudeDelta: 0.25 }}
-              onRegionChangeComplete={(r) => setCenter({ lat: r.latitude, lng: r.longitude })}
+              onRegionChangeComplete={(r) => setEdits((prev) => ({ ...prev, center: { lat: r.latitude, lng: r.longitude } }))}
               toolbarEnabled={false}
             >
               <Maps.Circle
@@ -143,7 +138,7 @@ export default function ProZone() {
             <Text style={styles.cardText}>{t("zone_radius")}</Text>
             <Text style={styles.cardBold}>{radius} km</Text>
           </View>
-          <Slider value={radius} onChange={setRadius} />
+          <Slider value={radius} onChange={(v) => setEdits((prev) => ({ ...prev, radius: v }))} />
           <Text style={styles.note}>{t("zone_radius_note")}</Text>
         </View>
 
@@ -156,7 +151,7 @@ export default function ProZone() {
               <Pressable
                 key={d}
                 testID={`zone-day-${d}`}
-                onPress={() => setDays(on ? days.filter((x) => x !== d) : [...days, d].sort())}
+                onPress={() => setEdits((prev) => ({ ...prev, days: on ? days.filter((x) => x !== d) : [...days, d].sort() }))}
                 style={[styles.day, on && styles.dayOn]}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: on }}
@@ -187,7 +182,7 @@ export default function ProZone() {
           <Switch
             testID="zone-urgent"
             value={urgent}
-            onValueChange={setUrgent}
+            onValueChange={(v) => setEdits((prev) => ({ ...prev, urgent: v }))}
             trackColor={{ true: colors.brandPrimary, false: colors.borderStrong }}
             thumbColor="#FFFFFF"
           />
@@ -208,7 +203,7 @@ export default function ProZone() {
                   <Pressable
                     key={v}
                     onPress={() => {
-                      picker === "from" ? setFrom(v) : setTo(v);
+                      setEdits((prev) => ({ ...prev, [picker === "from" ? "from" : "to"]: v }));
                       setPicker(null);
                     }}
                     style={[styles.timeRow, on && { backgroundColor: colors.brandSecondary }]}
@@ -227,25 +222,28 @@ export default function ProZone() {
 
 function Slider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const styles = useStyles();
-  const width = useRef(1);
-  const set = (x: number) => {
-    const p = Math.min(1, Math.max(0, x / width.current));
+  const [width, setWidth] = useState(1);
+  const set = useCallback((x: number) => {
+    const p = Math.min(1, Math.max(0, x / width));
     onChange(Math.round(MIN_KM + p * (MAX_KM - MIN_KM)));
-  };
-  const pan = useRef(
-    PanResponder.create({
+  }, [onChange, width]);
+  const pan = useMemo(
+    () => PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (e) => set(e.nativeEvent.locationX),
       onPanResponderMove: (e) => set(e.nativeEvent.locationX),
       onPanResponderTerminationRequest: () => false,
     }),
-  ).current;
+    [set],
+  );
   const pct = ((value - MIN_KM) / (MAX_KM - MIN_KM)) * 100;
   return (
     <View
       {...pan.panHandlers}
-      onLayout={(e) => (width.current = e.nativeEvent.layout.width)}
+      onLayout={(e) => {
+        setWidth(e.nativeEvent.layout.width);
+      }}
       style={styles.sliderHit}
       testID="zone-radius"
       accessibilityRole="adjustable"

@@ -24,17 +24,14 @@ export default function ProReplies() {
   const { t, lang } = useI18n();
   const toast = useToast();
   const q = useQuery({ queryKey: ["pro-settings", lang], queryFn: () => api<any>(`/specialists/me/settings?lang=${lang}`) });
-  const [items, setItems] = useState<string[] | null>(null);
+  const [itemsOverride, setItems] = useState<string[] | null>(null);
+  const items: string[] | null = itemsOverride ?? q.data?.quick_replies ?? null;
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     markSeen("pro_replies");
   }, []);
-  useEffect(() => {
-    if (q.data && items === null) setItems(q.data.quick_replies);
-  }, [q.data, items]);
-
   const save = async (next: string[]) => {
     setItems(next);
     setBusy(true);

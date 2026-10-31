@@ -49,8 +49,17 @@ async def set_zone(api, h, at, radius=8, days=(1, 2, 3, 4, 5, 6, 7), frm="00:00"
 
 async def settle():
     import asyncio
-    for _ in range(5):
+    for _ in range(20):
         await asyncio.sleep(0.01)
+
+
+async def wait_for_pushes(pushes, count):
+    import asyncio
+    for _ in range(100):
+        if len(pushes) >= count:
+            return
+        await asyncio.sleep(0.01)
+    assert len(pushes) >= count
 
 
 async def test_wall_only_shows_specialists_of_the_client_province(api, pushes):
@@ -165,11 +174,11 @@ async def test_push_to_specialist_on_first_message_and_to_client_on_reply(api, p
     await api.get(f"/api/specialists?lat={LINGOTTO[0]}&lng={LINGOTTO[1]}", headers=c)  # guarda su ultima posicion
     conv = (await api.post("/api/conversations", headers=c, json={"specialist_id": s["specialist_id"]})).json()
     await api.post(f"/api/conversations/{conv['conversation_id']}/messages", headers=c, json={"text": "Rubinetto che perde in cucina"})
-    await settle()
+    await wait_for_pushes(pushes, 1)
     first = pushes[-1]
     assert first["title"]["it"].startswith("Nuovo cliente a ") and "Rispondi presto" in first["body"]["it"]
     await api.post(f"/api/conversations/{conv['conversation_id']}/messages", headers=h, json={"text": "Arrivo oggi"})
-    await settle()
+    await wait_for_pushes(pushes, 2)
     assert pushes[-1]["body"]["it"] == "Arrivo oggi"
 
 

@@ -17,6 +17,8 @@ import { ReportSheet, STORE_REASONS } from "@/src/ReportSheet";
 // Without a Google Maps key in the build the native map would crash on Android, so the list is shown alone.
 const HAS_MAPS_KEY = Boolean(Constants.expoConfig?.extra?.hasMapsKey);
 const Maps: typeof import("react-native-maps") | null =
+  // The native map is not evaluated in web builds.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Platform.OS === "web" || !HAS_MAPS_KEY ? null : require("react-native-maps");
 
 type Store = {

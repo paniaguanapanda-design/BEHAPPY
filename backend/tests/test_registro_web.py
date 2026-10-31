@@ -5,7 +5,8 @@ import pytest
 
 from test_preregistro import api, clean_db, days_left, make_profile, register, server  # noqa: F401
 
-WEB = {"X-BeHappy-Client": "web"}
+WEB = {"X-BeHappy-Client": "web", "X-BeHappy-Proxy-Key": "test-web-proxy-key"}
+SPOOFED_WEB = {"X-BeHappy-Client": "web"}
 APP = {"X-BeHappy-Client": "app"}
 
 
@@ -51,24 +52,16 @@ async def test_web_signup_free_month_starts_in_app(api):
     assert (await api.get("/api/membership/me", headers=h)).json()["expires_at"] == m["expires_at"]
 
 
-async def test_fake_web_header_without_key_gets_no_promo(api, monkeypatch):
-    monkeypatch.setenv("WEB_PROXY_KEY", "clave-de-la-web")
-    # alguien escribe a mano la cabecera "web" desde fuera de la web: no hay mes gratis
-    h = await register(api, "tramposo@example.com")
-    await make_profile(api, {**h, **WEB})
-    await api.get("/api/auth/me", headers={**h, **APP})
-    assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
-    # la web de verdad firma con la clave: el mes gratis empieza al entrar en la app
-    h2 = await register(api, "vero@example.com")
-    await make_profile(api, {**h2, **WEB, "X-BeHappy-Proxy-Key": "clave-de-la-web"})
-    await api.get("/api/auth/me", headers={**h2, **APP})
-    m = (await api.get("/api/membership/me", headers=h2)).json()
-    assert m["active"] and m["source"] == "registro_web"
-
-
 async def test_app_signup_gets_no_web_promo(api):
     h = await register(api, "app@example.com")
     await make_profile(api, {**h, **APP})
+    await api.get("/api/auth/me", headers={**h, **APP})
+    assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
+
+
+async def test_spoofed_web_header_cannot_grant_free_month(api):
+    h = await register(api, "spoofed-web@example.com")
+    await make_profile(api, {**h, **SPOOFED_WEB})
     await api.get("/api/auth/me", headers={**h, **APP})
     assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
 

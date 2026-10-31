@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -26,23 +26,16 @@ export default function SpecialistProfile() {
   const { t, lang } = useI18n();
   const toast = useToast();
   const { id, diag, review } = useLocalSearchParams<{ id: string; diag?: string; review?: string }>();
+  const parsedRating = Number(review);
+  const reviewRating = parsedRating >= 1 && parsedRating <= 5 ? parsedRating : 0;
   const sq = useQuery({ queryKey: ["specialist", id], queryFn: () => api<any>(`/specialists/${id}`) });
   const rq = useQuery({ queryKey: ["reviews", id], queryFn: () => api<any[]>(`/specialists/${id}/reviews`) });
-  const [sheet, setSheet] = useState<null | "review">(null);
+  const [sheet, setSheet] = useState<null | "review">(reviewRating ? "review" : null);
   const [report, setReport] = useState<null | { type: string; id: string; blockId?: string }>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(reviewRating);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
-
-  // Opened from the chat card "Com'è andata?": the review sheet opens with the stars already chosen.
-  useEffect(() => {
-    const n = Number(review);
-    if (n >= 1 && n <= 5) {
-      setRating(n);
-      setSheet("review");
-    }
-  }, [review]);
 
   if (sq.isLoading) return <Loading />;
   const s = sq.data;

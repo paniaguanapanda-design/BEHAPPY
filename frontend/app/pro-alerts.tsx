@@ -21,21 +21,16 @@ export default function ProAlerts() {
   const { t, lang } = useI18n();
   const toast = useToast();
   const q = useQuery({ queryKey: ["pro-settings", lang], queryFn: () => api<any>(`/specialists/me/settings?lang=${lang}`) });
-  const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [cats, setCats] = useState<string[]>([]);
+  const [enabledOverride, setEnabled] = useState<boolean | null>(null);
+  const [catsOverride, setCats] = useState<string[] | null>(null);
+  const enabled = enabledOverride ?? q.data?.alerts.enabled ?? false;
+  const cats: string[] = catsOverride ?? q.data?.alerts.categories ?? [];
   const [phoneOk, setPhoneOk] = useState(true);
 
   useEffect(() => {
     markSeen("pro_alerts");
     pushAllowed().then(setPhoneOk);
   }, []);
-  useEffect(() => {
-    if (q.data && enabled === null) {
-      setEnabled(q.data.alerts.enabled);
-      setCats(q.data.alerts.categories);
-    }
-  }, [q.data, enabled]);
-
   const save = async (en: boolean, cs: string[]) => {
     setEnabled(en);
     setCats(cs);
