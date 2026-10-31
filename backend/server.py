@@ -70,9 +70,41 @@ def get_gemini():
     return _gemini_client
 
 
+# --- Topes diarios de gasto ---
+# Gemini y Google Maps se pagan por uso. Ademas de los limites por persona, hay un maximo al dia para TODA la app:
+# aunque alguien cree muchas cuentas, no puede gastar mas que esto. Se cambian en Render sin tocar el codigo.
+DAILY_CAPS = {
+    "gemini": int(os.environ.get("DAILY_MAX_GEMINI", "800")),  # diagnosis + traducciones
+    "maps": int(os.environ.get("DAILY_MAX_MAPS", "200")),  # Places + Geocoding (alta de ferreterias)
+}
+
+
+class DailyLimitReached(Exception):
+    pass
+
+
+async def spend_daily(kind: str) -> None:
+    """Cuenta una llamada de pago; si se pasa del tope del dia lanza DailyLimitReached (y avisa al admin una vez)."""
+    day = now().strftime("%Y-%m-%d")
+    doc = await db.usage.find_one_and_update({"_id": f"{kind}:{day}"}, {"$inc": {"count": 1}},
+                                             upsert=True, return_document=True)
+    count, cap = doc["count"], DAILY_CAPS[kind]
+    for level, label in ((cap, "alcanzado"), (int(cap * 0.8), "al 80%")):
+        if count == level:
+            logger.warning("Tope diario de %s %s (%s/%s)", kind, label, count, cap)
+            asyncio.create_task(send_email(
+                os.environ.get("ADMIN_EMAIL", "info@be-happyapp.com"), f"Be Happy: tope diario de {kind} {label}",
+                f"Hoy se han hecho {count} llamadas a {kind} (tope {cap}). Al llegar al tope se bloquean hasta mañana "
+                f"(UTC). Si es uso normal, sube DAILY_MAX_{kind.upper()} en Render.",
+                f"<p>Hoy se han hecho {count} llamadas a {kind} (tope {cap}).</p>"))
+    if count > cap:
+        raise DailyLimitReached(kind)
+
+
 async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
     """Pide a Gemini una respuesta en JSON, con o sin foto."""
     rate_limit("gemini-global", 600, 3600)
+    await spend_daily("gemini")
     contents = []
     if image_b64:
         contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
@@ -725,6 +757,8 @@ async def diagnose(body: DiagnoseIn, request: Request):
     extra = f"User note: {body.note}" if body.note else ""
     try:
         result = normalize_diagnosis(await gemini_json(DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra), b64))
+    except DailyLimitReached:
+        raise HTTPException(503, "Oggi il servizio è molto richiesto: riprova domani. / Hoy hay mucha demanda: inténtalo mañana.")
     except Exception as e:
         logger.exception("diagnose failed: %s", e)
         raise HTTPException(503, "AI analysis failed, please retry")
@@ -1682,6 +1716,10 @@ async def places_check(name: str, address: str, cap: str, city: str) -> dict:
         return {"ok": None}
     fields = "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.businessStatus"
     try:
+        await spend_daily("maps")
+    except DailyLimitReached:
+        return {"ok": None}  # queda en revision manual, sin gastar
+    try:
         async with httpx.AsyncClient(timeout=20) as hc:
             r = await hc.post("https://places.googleapis.com/v1/places:searchText",
                               headers={"X-Goog-Api-Key": key, "X-Goog-FieldMask": fields},
@@ -1710,7 +1748,13 @@ async def geocode(address: str, cap: str, city: str) -> Optional[dict]:
     key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
     try:
         async with httpx.AsyncClient(timeout=20, headers={"User-Agent": "BeHappy/1.0 (info@be-happyapp.com)"}) as hc:
-            if key:
+            use_google = bool(key)
+            if use_google:
+                try:
+                    await spend_daily("maps")
+                except DailyLimitReached:
+                    use_google = False  # se usa OpenStreetMap, que es gratis
+            if use_google:
                 r = await hc.get("https://maps.googleapis.com/maps/api/geocode/json",
                                  params={"address": q, "region": "it", "key": key})
                 res = r.json().get("results") or []
