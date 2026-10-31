@@ -995,6 +995,14 @@ async def get_specialist(sid: str, request: Request):
     await record_view(s, user)
     out = await specialist_out(dict(s))
     out["can_review"] = await can_review(user, s)
+    # De otra provincia: se ve la ficha, pero sin telefono ni WhatsApp (tampoco se le puede escribir)
+    mine = prov_code(user.get("zone"))
+    out["same_province"] = bool(mine) and mine == prov_code(s.get("zone"))
+    if not out["same_province"] and s["user_id"] != user["user_id"] and not await db.conversations.find_one(
+            {"client_id": user["user_id"], "specialist_id": sid}, {"_id": 1}):
+        out.pop("phone", None)
+        out.pop("whatsapp", None)
+        out["contact_blocked"] = True
     return out
 
 

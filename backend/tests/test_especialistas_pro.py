@@ -85,6 +85,10 @@ async def test_chat_only_within_the_same_province(api, pushes):
     c = await register(api, "cliente@x.it")  # provincia de Torino
     r = await api.post("/api/conversations", headers=c, json={"specialist_id": sr["specialist_id"]})
     assert r.status_code == 403
+    ficha = (await api.get(f"/api/specialists/{sr['specialist_id']}", headers=c)).json()
+    assert ficha["same_province"] is False and ficha["contact_blocked"] is True and "phone" not in ficha
+    ficha = (await api.get(f"/api/specialists/{st['specialist_id']}", headers=c)).json()
+    assert ficha["same_province"] is True and ficha["phone"] and "contact_blocked" not in ficha
     assert (await api.post("/api/conversations", headers=c, json={"specialist_id": st["specialist_id"]})).status_code == 200
     # sin provincia: primero tiene que elegirla
     nop = await register(api, "senza@x.it", at=None)

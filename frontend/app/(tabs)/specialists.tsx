@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +7,8 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { useMyPosition } from "@/src/position";
+import { provinceLabel, saveMyProvince, useMyProvince } from "@/src/province";
+import { ProvincePicker } from "@/src/ProvincePicker";
 import { CATEGORIES, tradesLabel, useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
@@ -29,9 +31,26 @@ export default function Specialists() {
   }, [params.category]);
 
   const pos = me.pos;
+  // Toda Italia por provincias: solo salen especialistas de la provincia del cliente.
+  const prov = useMyProvince();
+  const province = prov.data?.province ?? null;
+  const [changing, setChanging] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const autoTried = useRef(false);
+  // Primera vez con la ubicacion ya permitida: su provincia sale sola, sin preguntar.
+  useEffect(() => {
+    if (!prov.isSuccess || province || !pos || autoTried.current) return;
+    autoTried.current = true;
+    setAutoSaving(true);
+    saveMyProvince(pos.lat, pos.lng)
+      .catch(() => {})
+      .finally(() => setAutoSaving(false));
+  }, [prov.isSuccess, province, pos]);
+  const showPicker = prov.isSuccess && (changing || (!province && !autoSaving));
+
   const q = useQuery({
-    queryKey: ["specialists", cat, availOnly, pos?.lat.toFixed(2), pos?.lng.toFixed(2)],
-    enabled: me.ready,
+    queryKey: ["specialists", cat, availOnly, province?.code, pos?.lat.toFixed(2), pos?.lng.toFixed(2)],
+    enabled: me.ready && !!province,
     queryFn: () =>
       api<any[]>(
         `/specialists?category=${cat || "all"}${availOnly ? "&available=true" : ""}${pos ? `&lat=${pos.lat}&lng=${pos.lng}` : ""}`,
@@ -66,22 +85,37 @@ export default function Specialists() {
             <Text style={[styles.chipText, availOnly && styles.chipTextOn]}>{t("available_now_plural")}</Text>
           </Pressable>
         </View>
-        {pos ? (
-          <Text style={styles.zoneNote}>{t("only_your_zone")}</Text>
-        ) : me.ready && me.canAsk ? (
-          <Pressable testID="ask-location" onPress={() => me.request()} style={styles.locBtn} hitSlop={6}>
-            <Ionicons name="location-outline" size={16} color={colors.brandTertiary} />
-            <Text style={styles.locText}>{t("enable_location_zone")}</Text>
-          </Pressable>
+        {province && !changing ? (
+          <View style={styles.zone} testID="my-province">
+            <View style={styles.zonePin}>
+              <Ionicons name="location" size={14} color={colors.onBrandPrimary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.zoneTitle} numberOfLines={1}>
+                {provinceLabel(province, t)}
+              </Text>
+              <Text style={styles.zoneNote} numberOfLines={1}>
+                {t("prov_only_yours")}
+              </Text>
+            </View>
+            <Pressable testID="change-province" onPress={() => setChanging(true)} hitSlop={8} style={styles.zoneChange}>
+              <Text style={styles.zoneChangeText}>{t("prov_change")}</Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
+      {showPicker ? (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: bottomChrome + 24 }} keyboardShouldPersistTaps="handled">
+          <ProvincePicker onDone={() => setChanging(false)} onCancel={province ? () => setChanging(false) : undefined} />
+        </ScrollView>
+      ) : (
       <FlatList
         data={q.data || []}
         keyExtractor={(i) => i.specialist_id}
         contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: bottomChrome + 24, gap: 12 }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
         ListEmptyComponent={
-          q.isLoading || !me.ready ? (
+          q.isLoading || !me.ready || !province ? (
             <View style={{ gap: 12 }}>
               {[0, 1, 2].map((i) => (
                 <View key={i} style={styles.skeleton} />
@@ -136,6 +170,7 @@ export default function Specialists() {
           </Animated.View>
         )}
       />
+      )}
     </View>
   );
 }
@@ -151,9 +186,12 @@ const useStyles = makeStyles((c) => ({
   chipText: { fontSize: 13, fontWeight: "600", color: c.onSurface },
   chipTextOn: { color: c.onSurfaceInverse },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.onSurface },
+  zone: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: c.brandSecondary, borderWidth: 1.5, borderColor: "#FFD2B0", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
+  zonePin: { width: 26, height: 26, borderRadius: 13, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  zoneTitle: { fontSize: 15, fontWeight: "700", color: c.onSurface },
   zoneNote: { fontSize: 13, color: c.muted },
-  locBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: 32 },
-  locText: { fontSize: 13, color: c.brandTertiary, fontWeight: "600" },
+  zoneChange: { minHeight: 36, justifyContent: "center", paddingLeft: 4 },
+  zoneChangeText: { fontSize: 14, fontWeight: "700", color: c.onBrandSecondary, textDecorationLine: "underline" },
   skeleton: { height: 84, borderRadius: 18, backgroundColor: c.surfaceTertiary },
   empty: { alignItems: "center", padding: 32, gap: 12 },
   emptyText: { color: c.muted, textAlign: "center", fontSize: 15 },

@@ -213,6 +213,17 @@ export default function SpecialistProfile() {
       <BlurView intensity={60} tint="light" style={[styles.cta, { paddingBottom: insets.bottom + 12 }]}>
         {isMe ? (
           <Button style={{ flex: 1 }} title={t("edit_profile")} icon="create-outline" onPress={() => router.push("/specialist-form")} testID="edit-own-profile-button" />
+        ) : s.contact_blocked ? (
+          // De otra provincia: se ve la ficha, pero no se le puede escribir ni llamar
+          <View style={{ flex: 1, gap: 8 }} testID="specialist-other-province">
+            <View style={styles.provWarn}>
+              <Ionicons name="alert-circle" size={20} color={colors.error} />
+              <Text style={styles.provWarnText}>
+                {s.zone?.province ? t("prov_spec_other").replace("{name}", s.name).replace("{p}", s.zone.province.name) : t("prov_spec_choose")}
+              </Text>
+            </View>
+            <Button title={t("prov_search_here")} icon="search" onPress={() => router.replace("/specialists")} testID="search-my-province-button" />
+          </View>
         ) : !s.membership_active ? (
           <View style={{ flex: 1, gap: 6 }}>
             <Pressable testID="chat-specialist-button" style={[styles.iconBtn, { width: "100%", flexDirection: "row", gap: 8 }]} onPress={openChat}>
@@ -303,6 +314,8 @@ const useStyles = makeStyles((c) => ({
   cta: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border, overflow: "hidden" },
   iconBtn: { width: 50, height: 50, borderRadius: 12, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   chatText: { color: c.brandTertiary, fontWeight: "700", fontSize: 16 },
+  provWarn: { flexDirection: "row", gap: 8, alignItems: "flex-start", backgroundColor: "#FFF1F0", borderWidth: 1, borderColor: "#FFC9C5", borderRadius: 12, padding: 10 },
+  provWarnText: { flex: 1, fontSize: 14, lineHeight: 20, color: c.onSurface },
   backdrop: { flex: 1, backgroundColor: c.scrim },
   sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 12 },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: c.borderStrong, marginBottom: 4 },
