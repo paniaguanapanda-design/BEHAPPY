@@ -707,7 +707,12 @@ Difficulty rules:
   heaters and boilers, anything risky). steps, materials and tools MUST be empty arrays. Never give repair instructions;
   safety_warnings only says what to avoid and how to stay safe until the specialist arrives (e.g. close the water/gas valve,
   switch off the breaker).
-If the problem is a household appliance (washing machine, oven, fridge, dishwasher, dryer, microwave or any other appliance) set is_appliance true and leave steps, materials and tools empty.
+is_appliance is true ONLY for free-standing household appliances (washing machine, fridge, oven, dishwasher, dryer, microwave,
+cooker hood...). Water heaters, boilers, radiators, air conditioners, taps, sockets and other fixed installations are NOT
+appliances: use their trade category (water heater or boiler -> plumbing or hvac).
+For an appliance leave steps, materials and tools empty, but still decide recommended_action with the same criteria: an appliance
+is NOT replaced by default. Most faults (door seal, filter, drain pump, hose, plug, cable, thermostat) are "repair" by a technician;
+"replace" only with visible damage beyond repair or when the user's note says it is very old or the repair is not worth it.
 If the image is not a home problem set is_home_problem false and still fill title/description explaining that.
 {extra}"""
 
@@ -721,9 +726,18 @@ APPLIANCE_WORDS = ["lavadora", "horno", "nevera", "frigor", "lavavajillas", "sec
                    "washing machine", "oven", "fridge", "refrigerator", "dishwasher", "dryer", "microwave", "appliance"]
 
 
+# Instalaciones fijas que la IA a veces llama "electrodomestico": van con el fontanero, no se "cambian" por defecto
+INSTALLATION_RE = re.compile(r"\b(scaldabagn\w*|scaldacqua|calentador\w*|termo|boiler|caldai\w*|calder\w*|water heater|"
+                             r"termosifon\w*|radiador\w*|radiator\w*)\b", re.I)
+
+
 def normalize_diagnosis(r: dict) -> dict:
-    text = " ".join(str(r.get(k) or "") for k in ("title_es", "title_it", "title", "category")).lower()
-    if r.get("is_appliance") or any(w in text for w in APPLIANCE_WORDS):
+    text = " ".join(str(r.get(k) or "") for k in ("title_es", "title_it", "title", "object", "category")).lower()
+    if INSTALLATION_RE.search(text):
+        r["is_appliance"] = False
+        if r.get("category") not in CATEGORIES:
+            r["category"] = "plumbing"
+    elif r.get("is_appliance") or any(w in text for w in APPLIANCE_WORDS):
         r["is_appliance"] = True
         r["category"] = "appliance"
         r["steps"], r["materials"], r["tools"] = [], [], []
