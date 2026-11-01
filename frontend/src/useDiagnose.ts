@@ -9,19 +9,41 @@ import { compressToBase64 } from "@/src/compressImage";
 import { localPhotos } from "@/src/localPhotos";
 import { lastPositionIfAllowed } from "@/src/position";
 
+let pendingScanNote = "";
+
+export function setPendingScanNote(note: string) {
+  pendingScanNote = note;
+}
+
+export function takePendingScanNote() {
+  const note = pendingScanNote;
+  pendingScanNote = "";
+  return note;
+}
+
 export function useDiagnose() {
   const [analyzing, setAnalyzing] = useState(false);
   const router = useRouter();
   const { lang, t } = useI18n();
   const toast = useToast();
 
-  const run = async (uri: string, width?: number, height?: number, replace = false): Promise<boolean> => {
+  const run = async (uri: string | null, width?: number, height?: number, replace = false, note?: string): Promise<boolean> => {
+    const description = note?.trim();
+    if (!uri && !description) {
+      toast(t("request_note_required"), "error");
+      return false;
+    }
     setAnalyzing(true);
     try {
-      const [base64, pos] = await Promise.all([compressToBase64(uri, width, height), lastPositionIfAllowed()]);
+      const [base64, pos] = await Promise.all([
+        uri ? compressToBase64(uri, width, height) : Promise.resolve(null),
+        lastPositionIfAllowed(),
+      ]);
       // The position (only if already allowed) lets nearby specialists of that trade get an alert; it is not shown to anyone.
-      const d = await api<{ diagnosis_id: string }>("/diagnose", { body: { image_base64: base64, language: lang, ...(pos ?? {}) } });
-      localPhotos[d.diagnosis_id] = uri;
+      const d = await api<{ diagnosis_id: string }>("/diagnose", {
+        body: { ...(base64 ? { image_base64: base64 } : {}), ...(description ? { note: description } : {}), language: lang, ...(pos ?? {}) },
+      });
+      if (uri) localPhotos[d.diagnosis_id] = uri;
       // show the result straight away in the scanner's language — no extra fetch/translation
       queryClient.setQueryData(["diagnosis", d.diagnosis_id, lang], { ...d, title: (d as any)[`title_${lang}`] });
       queryClient.invalidateQueries({ queryKey: ["diagnoses"] });
@@ -37,10 +59,10 @@ export function useDiagnose() {
     }
   };
 
-  const pickFromGallery = async (replace = false) => {
+  const pickFromGallery = async (replace = false, note?: string) => {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
     const a = res.canceled ? null : res.assets[0];
-    if (a) return await run(a.uri, a.width, a.height, replace);
+    if (a) return await run(a.uri, a.width, a.height, replace, note);
     return false;
   };
 

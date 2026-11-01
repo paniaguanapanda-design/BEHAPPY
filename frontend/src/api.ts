@@ -47,3 +47,21 @@ export async function uploadImage(uri: string, mimeType?: string | null): Promis
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   return (await res.json()).path;
 }
+
+export async function uploadRequestPhoto(uri: string, mimeType?: string | null): Promise<string> {
+  const headers: Record<string, string> = { "X-BeHappy-Client": "app" };
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await uploadForm(`${API}/requests/photos`, {
+    headers,
+    files: { file: { uri, name: "request-photo.jpg", mimeType: mimeType ?? "image/jpeg" } },
+  });
+  if (!res.ok) {
+    let message = `Photo upload failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (typeof body.detail === "string") message = body.detail;
+    } catch {}
+    throw new Error(message);
+  }
+  return (await res.json()).path;
+}

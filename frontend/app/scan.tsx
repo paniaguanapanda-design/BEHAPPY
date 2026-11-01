@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -7,7 +7,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useI18n } from "@/src/i18n";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
-import { useDiagnose } from "@/src/useDiagnose";
+import { takePendingScanNote, useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 import { Button } from "@/src/ui";
 import { useToast } from "@/src/toast";
@@ -23,6 +23,7 @@ export default function Scan() {
   const cam = useRef<CameraView>(null);
   const { analyzing, run, pickFromGallery } = useDiagnose();
   const [shot, setShot] = useState<string | null>(null);
+  const [note] = useState(takePendingScanNote);
   const showCamera = !shot && !analyzing;
 
   const capture = async () => {
@@ -31,7 +32,7 @@ export default function Scan() {
       const pic = await cam.current?.takePictureAsync({ quality: 0.7, shutterSound: false });
       if (pic?.uri) {
         setShot(pic.uri); // congela la foto y apaga la camara mientras la IA analiza
-        const ok = await run(pic.uri, pic.width, pic.height, true);
+        const ok = await run(pic.uri, pic.width, pic.height, true, note);
         if (!ok) setShot(null); // si fallo, vuelve la camara
       }
     } catch (e: any) {
@@ -50,21 +51,31 @@ export default function Scan() {
   if (!perm.granted) {
     const blocked = !perm.canAskAgain;
     return (
-      <View style={[styles.root, styles.permWrap, { paddingTop: insets.top + 56, paddingBottom: insets.bottom + 24 }]}>
+      <View style={[styles.root, styles.permWrap]}>
         {close}
-        <View style={styles.permIcon}>
-          <Ionicons name="camera-outline" size={40} color={colors.onBrandPrimary} />
-        </View>
-        <Text style={styles.permTitle}>{t("camera_perm_title")}</Text>
-        <Text style={styles.permText}>{t("camera_perm_text")}</Text>
-        <View style={{ gap: 12, alignSelf: "stretch" }}>
-          {blocked ? (
-            <Button testID="open-settings-button" title={t("open_settings")} icon="settings-outline" onPress={() => Linking.openSettings()} />
-          ) : (
-            <Button testID="allow-camera-button" title={t("allow_camera")} icon="camera" onPress={requestPerm} />
-          )}
-          <Button testID="perm-gallery-button" variant="secondary" title={t("use_gallery")} icon="images-outline" onPress={() => pickFromGallery(true)} />
-        </View>
+        <ScrollView
+          contentContainerStyle={[
+            styles.permScroll,
+            { paddingTop: insets.top + 64, paddingBottom: insets.bottom + 24 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.permContent}>
+            <View style={styles.permIcon}>
+              <Ionicons name="camera-outline" size={40} color={colors.onBrandPrimary} />
+            </View>
+            <Text style={styles.permTitle}>{t("camera_perm_title")}</Text>
+            <Text style={styles.permText}>{t("camera_perm_text")}</Text>
+            <View style={{ gap: 12, alignSelf: "stretch" }}>
+              {blocked ? (
+                <Button testID="open-settings-button" title={t("open_settings")} icon="settings-outline" onPress={() => Linking.openSettings()} />
+              ) : (
+                <Button testID="allow-camera-button" title={t("allow_camera")} icon="camera" onPress={requestPerm} />
+              )}
+              <Button testID="perm-gallery-button" variant="secondary" title={t("use_gallery")} icon="images-outline" onPress={() => pickFromGallery(true, note)} />
+            </View>
+          </View>
+        </ScrollView>
         <AnalyzingOverlay visible={analyzing} />
       </View>
     );
@@ -88,7 +99,7 @@ export default function Scan() {
       </View>
       {close}
       <View style={[styles.controls, { paddingBottom: insets.bottom + 24 }]}>
-        <Pressable testID="scan-gallery-button" onPress={() => pickFromGallery(true)} style={styles.side} hitSlop={8}>
+        <Pressable testID="scan-gallery-button" onPress={() => pickFromGallery(true, note)} style={styles.side} hitSlop={8}>
           <Ionicons name="images" size={26} color={colors.onSurfaceInverse} />
         </Pressable>
         <Pressable testID="capture-button" onPress={capture} style={({ pressed }) => [styles.shutter, pressed && { transform: [{ scale: 0.92 }] }]}>
@@ -103,6 +114,9 @@ export default function Scan() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surfaceInverse },
+  permWrap: { backgroundColor: c.surface, paddingHorizontal: 24, paddingTop: 64 },
+  permScroll: { flexGrow: 1, justifyContent: "center" },
+  permContent: { width: "100%", maxWidth: 420, alignSelf: "center", gap: 16 },
   abs: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   close: { position: "absolute", left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: c.scrim, alignItems: "center", justifyContent: "center" },
   reticleWrap: { ...{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, alignItems: "center", justifyContent: "center", gap: 16 },
@@ -117,7 +131,6 @@ const useStyles = makeStyles((c) => ({
   side: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: c.scrim },
   shutter: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: c.onSurfaceInverse, alignItems: "center", justifyContent: "center" },
   shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: c.onSurfaceInverse },
-  permWrap: { alignItems: "center", paddingHorizontal: 24, gap: 16, backgroundColor: c.surface, justifyContent: "center" },
   permIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
   permTitle: { fontSize: 24, fontFamily: fonts.display, color: c.onSurface, textAlign: "center" },
   permText: { fontSize: 15, color: c.muted, textAlign: "center", lineHeight: 22, marginBottom: 16 },

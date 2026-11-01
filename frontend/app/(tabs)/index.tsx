@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
@@ -10,8 +10,9 @@ import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
-import { useDiagnose } from "@/src/useDiagnose";
+import { setPendingScanNote, useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
+import { BouncyIcon, Button } from "@/src/ui";
 
 const HERO = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Ceiling_water_damage.jpg/1280px-Ceiling_water_damage.jpg";
 
@@ -23,13 +24,16 @@ export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useI18n();
-  const { analyzing, pickFromGallery } = useDiagnose();
+  const { analyzing, pickFromGallery, run } = useDiagnose();
+  const [note, setNote] = React.useState("");
+  const [scanPressed, setScanPressed] = React.useState(false);
+  const [galleryPressed, setGalleryPressed] = React.useState(false);
 
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.hello} testID="home-greeting">
-          {t("hello")}, {user?.name?.split(" ")[0]}
+          {user?.name ? `${t("hello")}, ${user.name.split(" ")[0]}` : t("hello")}
         </Text>
         <Text style={styles.title}>{t("home_title")}</Text>
       </View>
@@ -37,7 +41,16 @@ export default function Home() {
         contentContainerStyle={{ paddingBottom: bottomChrome + 24 }}
       >
         <Animated.View entering={FadeInDown.duration(250)}>
-          <Pressable testID="scan-problem-button" onPress={() => router.push("/scan")} style={({ pressed }) => [styles.hero, pressed && { transform: [{ scale: 0.98 }] }]}>
+          <Pressable
+            testID="scan-problem-button"
+            onPress={() => {
+              setPendingScanNote(note.trim());
+              router.push("/scan");
+            }}
+            onPressIn={() => setScanPressed(true)}
+            onPressOut={() => setScanPressed(false)}
+            style={({ pressed }) => [styles.hero, pressed && { transform: [{ scale: 0.98 }] }]}
+          >
             <Image source={{ uri: HERO }} style={styles.abs} contentFit="cover" />
             <LinearGradient colors={["transparent", colors.surfaceInverse]} style={styles.abs} />
             <View style={styles.reticle}>
@@ -48,7 +61,7 @@ export default function Home() {
             </View>
             <View style={styles.heroContent}>
               <View style={styles.camIcon}>
-                <Ionicons name="camera" size={26} color={colors.onBrandPrimary} />
+                <BouncyIcon name="camera" size={26} color={colors.onBrandPrimary} active={scanPressed} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.heroTitle}>{t("scan_cta")}</Text>
@@ -60,11 +73,42 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(60).duration(250)}>
-          <Pressable testID="gallery-upload-button" onPress={() => pickFromGallery()} style={styles.galleryBtn}>
-            <Ionicons name="images-outline" size={20} color={colors.brandPrimary} />
+          <Pressable
+            testID="gallery-upload-button"
+            onPress={() => pickFromGallery(false, note)}
+            onPressIn={() => setGalleryPressed(true)}
+            onPressOut={() => setGalleryPressed(false)}
+            style={styles.galleryBtn}
+          >
+            <BouncyIcon name="images-outline" size={20} color={colors.brandPrimary} active={galleryPressed} />
             <Text style={styles.galleryText}>{t("gallery_cta")}</Text>
           </Pressable>
         </Animated.View>
+
+        <View style={styles.requestCard}>
+          <Text style={styles.requestTitle}>{t("request_note_title")}</Text>
+          <TextInput
+            testID="home-request-input"
+            style={styles.requestInput}
+            multiline
+            maxLength={500}
+            placeholder={t("request_note_placeholder")}
+            placeholderTextColor={colors.muted}
+            value={note}
+            onChangeText={setNote}
+            textAlignVertical="top"
+          />
+          {note.trim() ? (
+            <Button
+              testID="home-text-only-request-button"
+              title={t("request_without_photo")}
+              icon="people-outline"
+              onPress={() => {
+                void run(null, undefined, undefined, false, note);
+              }}
+            />
+          ) : null}
+        </View>
 
       </ScrollView>
       <AnalyzingOverlay visible={analyzing} />
@@ -104,6 +148,28 @@ const useStyles = makeStyles((c) => ({
     gap: 8,
   },
   galleryText: { color: c.brandTertiary, fontWeight: "700", fontSize: 15 },
+  requestCard: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    padding: 16,
+    gap: 12,
+    borderRadius: 16,
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
+  requestTitle: { color: c.onSurface, fontSize: 17, fontWeight: "700" },
+  requestInput: {
+    minHeight: 96,
+    maxHeight: 140,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 10,
+    backgroundColor: c.surface,
+    color: c.onSurface,
+    fontSize: 14,
+  },
   section: { fontSize: 20, fontWeight: "700", color: c.onSurface, marginTop: 32, marginBottom: 12, paddingHorizontal: 24 },
   empty: { marginHorizontal: 16, padding: 24, borderRadius: 20, backgroundColor: c.brandSecondary, alignItems: "center", gap: 8 },
   emptyText: { color: c.onBrandSecondary, textAlign: "center", fontSize: 14, lineHeight: 20 },

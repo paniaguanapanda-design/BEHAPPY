@@ -105,6 +105,12 @@ export default function Chat() {
                 <View style={styles.dbody}>
                   <Text style={styles.dlabel}>{t("ai_diagnosis")}</Text>
                   <Text style={styles.dtitle}>{(lang === "it" ? c.diagnosis.title_it : c.diagnosis.title_es) || c.diagnosis.title_it}</Text>
+                  {c.diagnosis.user_note ? (
+                    <View style={styles.dnote}>
+                      <Text style={styles.dnoteLabel}>{t("request_details")}</Text>
+                      <Text style={styles.dnoteText}>{c.diagnosis.user_note}</Text>
+                    </View>
+                  ) : null}
                   {c.diagnosis.materials?.length ? (
                     <>
                       <Text style={styles.dmat}>
@@ -232,6 +238,9 @@ const useStyles = makeStyles((c) => ({
   dbody: { padding: 12, gap: 4 },
   dlabel: { fontSize: 12, color: c.muted },
   dtitle: { fontSize: 16, fontFamily: fonts.display, color: c.onSurface },
+  dnote: { marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: c.surface },
+  dnoteLabel: { fontSize: 12, fontWeight: "700", color: c.onSurfaceTertiary },
+  dnoteText: { marginTop: 4, fontSize: 13, lineHeight: 18, color: c.onSurface },
   dmat: { fontSize: 13, color: c.onSurfaceTertiary, lineHeight: 18 },
   where: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.brandSecondary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
   whereText: { flex: 1, fontSize: 13, fontWeight: "700", color: c.onBrandSecondary },

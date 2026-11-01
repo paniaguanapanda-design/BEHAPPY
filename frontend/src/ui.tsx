@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, PressableProps, StyleProp, Text, View, ViewStyle } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring } from "react-native-reanimated";
 import { imageSource } from "@/src/api";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -16,6 +17,49 @@ export function Avatar({ uri, name, size = 48 }: { uri?: string | null; name?: s
   );
 }
 
+export function BouncyIcon({
+  name,
+  size,
+  color,
+  active = false,
+}: {
+  name: React.ComponentProps<typeof Ionicons>["name"];
+  size: number;
+  color: React.ComponentProps<typeof Ionicons>["color"];
+  active?: boolean;
+}) {
+  const scale = useSharedValue(1);
+  const lift = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    if (active) {
+      scale.value = withSequence(
+        withSpring(1.2, { damping: 7, stiffness: 360 }),
+        withSpring(1, { damping: 9, stiffness: 280 }),
+      );
+      lift.value = withSequence(
+        withSpring(-2, { damping: 8, stiffness: 320 }),
+        withSpring(0, { damping: 9, stiffness: 280 }),
+      );
+    } else {
+      scale.value = withSpring(1, { damping: 10, stiffness: 300 });
+      lift.value = withSpring(0, { damping: 10, stiffness: 300 });
+    }
+  }, [active, lift, reduceMotion, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }, { translateY: lift.value }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Ionicons name={name} size={size} color={color} />
+    </Animated.View>
+  );
+}
+
 type BtnProps = PressableProps & {
   title: string;
   variant?: "primary" | "secondary" | "ghost" | "danger";
@@ -27,11 +71,20 @@ type BtnProps = PressableProps & {
 export function Button({ title, variant = "primary", icon, loading, style, disabled, ...rest }: BtnProps) {
   const styles = useStyles();
   const { colors } = useTheme();
+  const [pressed, setPressed] = useState(false);
   const bg = { primary: colors.brandPrimary, secondary: colors.brandSecondary, ghost: "transparent", danger: colors.error }[variant];
   const fg = { primary: colors.onBrandPrimary, secondary: colors.onBrandSecondary, ghost: colors.brandPrimary, danger: colors.onError }[variant];
   return (
     <Pressable
       {...rest}
+      onPressIn={(event) => {
+        setPressed(true);
+        rest.onPressIn?.(event);
+      }}
+      onPressOut={(event) => {
+        setPressed(false);
+        rest.onPressOut?.(event);
+      }}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.btn,
@@ -44,7 +97,7 @@ export function Button({ title, variant = "primary", icon, loading, style, disab
         <ActivityIndicator color={fg} />
       ) : (
         <>
-          {icon && <Ionicons name={icon} size={18} color={fg} />}
+          {icon && <BouncyIcon name={icon} size={18} color={fg} active={pressed} />}
           <Text style={[styles.btnText, { color: fg }]} numberOfLines={1}>
             {title}
           </Text>

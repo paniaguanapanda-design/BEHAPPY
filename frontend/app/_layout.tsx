@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { LogBox, StyleSheet } from "react-native";
+import { LogBox, Platform, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
@@ -34,7 +34,17 @@ function Gate() {
   useEffect(() => {
     if (loading) return;
     const onLogin = segments[0] === "login";
-    const isPublic = onLogin || segments[0] === "pro"; // the specialists page is readable before signing in
+    const isWebPreview =
+      __DEV__ &&
+      Platform.OS === "web" &&
+      (segments[0] === "requests-preview" ||
+        segments[0] === "requests-pro-preview" ||
+        segments[0] === "scan" ||
+        (segments[0] === "(tabs)" && segments.length === 1));
+    const isPublic =
+      onLogin ||
+      segments[0] === "pro" ||
+      isWebPreview; // allow viewing the scanner flow in the web development preview without a session
     if (!user && !isPublic) router.replace("/login");
     else if (user && isPublic) {
       const next = takeAfterLogin();
