@@ -830,6 +830,7 @@ class SpecialistIn(BaseModel):
     phone: str = Field(max_length=30)
     whatsapp: Optional[str] = Field(default=None, max_length=30)
     avatar: Optional[str] = Field(default=None, max_length=300)  # foto de perfil (obligatoria)
+    city: Optional[str] = Field(default=None, max_length=80)  # comune donde trabaja (formulario de la web)
 
 
 class PortfolioIn(BaseModel):
@@ -890,6 +891,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
     if not body.name.strip() or not body.phone.strip():
         raise HTTPException(400, "Name and phone required")
     data = body.model_dump()
+    city = (data.pop("city") or "").strip()
     data["categories"] = cats
     data["subtrades"] = [x for x in dict.fromkeys(body.subtrades) if any(x in SUBTRADES.get(c, []) for c in cats)]
     data["bio"] = data["bio"].strip()
@@ -915,6 +917,11 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
             # Registrado desde la web: el mes gratis empieza la primera vez que entra en la app
             await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"promo_mes_gratis": "pendiente"}})
     user["specialist_id"] = sid
+    if city and not prov_code((existing or {}).get("zone")):
+        # Registro desde la web con su comune: su zona (y su provincia) quedan puestas y ya sale en la app
+        zone = await zone_from_city(city)
+        if zone:
+            await db.specialists.update_one({"specialist_id": sid}, {"$set": {"zone": zone}})
     await apply_prereg(user)
     await start_web_promo(user, request)
     return await specialist_out(await db.specialists.find_one({"specialist_id": sid}, {"_id": 0}))
@@ -2370,6 +2377,19 @@ async def place_search(q: str) -> list:
         out.append({"name": name, "province": prov, "lat": float(it["lat"]), "lng": float(it["lon"])})
     await db.geo_cache.update_one({"_id": key}, {"$set": {"results": out[:6], "at": iso(now())}}, upsert=True)
     return out[:6]
+
+
+async def zone_from_city(city: str) -> Optional[dict]:
+    """Zona inicial del especialista a partir del comune que escribio en la web ('settimo-torinese' o texto libre)."""
+    name = " ".join(city.replace("-", " ").split())
+    if len(name) < 2:
+        return None
+    results = await place_search(name)
+    if not results:
+        return None
+    best = next((r for r in results if r["name"].lower() == name.lower()), results[0])
+    return {"lat": best["lat"], "lng": best["lng"], "radius_km": DEFAULT_RADIUS_KM, "label": best["name"],
+            "province": best["province"]}
 
 
 def prov_code(doc: Optional[dict]) -> Optional[str]:

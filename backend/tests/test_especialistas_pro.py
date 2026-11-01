@@ -279,3 +279,17 @@ async def test_wall_only_lists_specialists_with_active_subscription(api, pushes)
     c = await register(api, "cliente@x.it")
     out = (await api.get("/api/specialists", headers=c)).json()
     assert [x["specialist_id"] for x in out] == [s["specialist_id"]]
+
+
+async def test_city_from_web_signup_sets_the_zone(api, pushes):
+    # el formulario de la web manda el comune: el especialista ya sale en su provincia sin abrir la app
+    h, s = await pro(api, "web@x.it", zone=None, city="settimo-torinese")
+    assert s["zone"]["province"] == {"code": "TO", "name": "Torino"} and s["zone"]["label"] == "Settimo Torinese"
+    c = await register(api, "cliente@x.it")
+    assert s["specialist_id"] in [x["specialist_id"] for x in (await api.get("/api/specialists", headers=c)).json()]
+    # un comune que no existe: se crea igual, sin zona (la pone luego en la app)
+    h2, s2 = await pro(api, "web2@x.it", zone=None, city="Paese Inventato")
+    assert s2["zone"] is None
+    # editar el perfil con otro comune no cambia una zona ya puesta
+    await make_profile(api, h, zone=None, city="milano")
+    assert (await api.get("/api/specialists/me/settings", headers=h)).json()["zone"]["province"]["code"] == "TO"
