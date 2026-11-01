@@ -13,6 +13,31 @@ import { DifficultyBadge } from "@/src/DifficultyBadge";
 import { localPhotos } from "@/src/localPhotos";
 import { Button, Loading, SectionTitle } from "@/src/ui";
 
+type Action = "repair" | "reposition" | "replace" | "inspect";
+const ACTIONS: string[] = ["repair", "reposition", "replace", "inspect"];
+const ACTION_ICON: Record<Action, "checkmark" | "refresh" | "swap-horizontal" | "search"> = {
+  repair: "checkmark",
+  reposition: "refresh",
+  replace: "swap-horizontal",
+  inspect: "search",
+};
+
+// "Qué hay que hacer": what the AI decided after looking at the photo (repair / put back / replace / inspect) and why.
+function ActionBox({ d, t, styles, colors }: { d: any; t: (k: string) => string; styles: any; colors: any }) {
+  const a: Action = ACTIONS.includes(d.recommended_action) ? d.recommended_action : "inspect";
+  const tint = a === "repair" ? colors.success : a === "replace" ? colors.brandTertiary : a === "reposition" ? colors.brandPrimary : colors.warning;
+  return (
+    <View style={styles.actionBox} testID={`action-${a}`}>
+      <Text style={styles.actionLabel}>{t("act_label")}</Text>
+      <View style={styles.actionRow}>
+        <Ionicons name={ACTION_ICON[a]} size={22} color={tint} />
+        <Text style={styles.actionTitle}>{t(`act_${a}`)}</Text>
+      </View>
+      {d.action_reason ? <Text style={styles.outcomeText}>{d.action_reason}</Text> : null}
+    </View>
+  );
+}
+
 export default function Diagnosis() {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -35,6 +60,7 @@ export default function Diagnosis() {
 
   const steps: { title: string; detail: string }[] = d.difficulty === "expert" ? [] : d.steps || [];
   const isAppliance = d.category === "appliance";
+  const action: Action = ACTIONS.includes(d.recommended_action) ? d.recommended_action : "inspect";
   const canHire = (CATEGORIES as readonly string[]).includes(d.category); // unknown trade: never open specialists
   const photo = localPhotos[d.diagnosis_id] ? { uri: localPhotos[d.diagnosis_id] } : imageSource(d.image_path);
   const materials: any[] = d.difficulty === "expert" ? [] : d.materials || [];
@@ -79,12 +105,15 @@ export default function Diagnosis() {
               <Button title={t("scan_again")} icon="camera" onPress={() => router.replace("/scan")} testID="scan-again-button" />
             </View>
           ) : isAppliance ? (
-            <View style={styles.outcome} testID="outcome-appliance">
-              <Ionicons name="swap-horizontal" size={22} color={colors.brandTertiary} />
-              <Text style={styles.outcomeText}>{t("appliance_hint")}</Text>
-            </View>
+            <>
+              <ActionBox d={d} t={t} styles={styles} colors={colors} />
+              <View style={styles.outcome} testID="outcome-appliance">
+                <Text style={styles.outcomeText}>{t(`appl_out_${action}`)}</Text>
+              </View>
+            </>
           ) : (
             <>
+              <ActionBox d={d} t={t} styles={styles} colors={colors} />
               {d.estimated_time && d.difficulty !== "expert" ? (
                 <View style={styles.metaRow}>
                   <View style={styles.meta}>
@@ -217,6 +246,10 @@ const useStyles = makeStyles((c) => ({
   title: { color: c.onSurfaceInverse, fontSize: 28, fontFamily: fonts.display, letterSpacing: -0.6 },
   content: { padding: 16, gap: 24 },
   outcome: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, gap: 10 },
+  actionBox: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 2, borderColor: c.brandPrimary, gap: 8 },
+  actionLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", color: c.muted },
+  actionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  actionTitle: { fontSize: 18, fontFamily: fonts.display, color: c.onSurface, flexShrink: 1 },
   outcomeText: { fontSize: 15, color: c.onSurface, lineHeight: 22 },
   body: { fontSize: 16, lineHeight: 24, color: c.onSurfaceTertiary },
   warnBox: { padding: 16, borderRadius: 12, backgroundColor: c.surfaceTertiary, gap: 12 },
