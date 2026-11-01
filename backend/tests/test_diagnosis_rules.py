@@ -23,7 +23,7 @@ def test_washing_machine_is_an_appliance_but_keeps_the_ai_decision():
 
 def test_thermostat_is_not_mistaken_for_a_water_heater():
     r = norm(category="hvac", object="Termostato", title_es="Termostato sin pantalla", difficulty="easy")
-    assert r["is_appliance"] is not True and r["category"] == "hvac" and r["difficulty"] == "easy"
+    assert r.get("is_appliance") is not True and r["category"] == "hvac" and r["difficulty"] == "easy"
 
 
 def test_unknown_action_becomes_inspect():
