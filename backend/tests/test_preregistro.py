@@ -32,9 +32,21 @@ async def fake_province_at(lat, lng):
     return {"code": code, "name": PROVINCES[code][0]}
 
 
+COMUNI = {"torino": "TO", "moncalieri": "TO", "settimo torinese": "TO", "milano": "MI", "roma": "RM"}
+
+
+async def fake_place_search(q):
+    code = COMUNI.get(" ".join(q.lower().split()))
+    if not code:
+        return []
+    name, lat, lng = PROVINCES[code]
+    return [{"name": q.title(), "province": {"code": code, "name": name}, "lat": lat, "lng": lng}]
+
+
 @pytest.fixture(autouse=True)
 async def clean_db(monkeypatch):
     monkeypatch.setattr(server, "province_at", fake_province_at)
+    monkeypatch.setattr(server, "place_search", fake_place_search)
     monkeypatch.setattr(server, "S3_BUCKET", None)
     monkeypatch.setattr(server, "ON_RENDER", False)
     monkeypatch.setenv("WEB_PROXY_KEY", "test-web-proxy-key")
