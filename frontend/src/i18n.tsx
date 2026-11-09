@@ -1,14 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { en } from "@/src/i18n.en";
 import { storage } from "@/src/utils/storage";
 
-export type Lang = "es" | "it";
+export type Lang = "es" | "it" | "en";
 
 const es = {
   profile_active: "Perfil activo", profile_active_until: "Hasta el", profile_inactive: "Perfil no activo",
   new_badge: "NUEVO", this_week: "Esta semana", details: "Detalles", stat_views: "visitas al perfil", stat_clients: "clientes te escribieron", stat_response: "tiempo de respuesta",
   available_now: "Disponible ahora", available_now_plural: "Disponibles ahora", out_of_hours: "Fuera de horario", edit_profile_short: "Editar perfil",
   zone_hours: "Zona y horario", zone_not_set: "Zona sin configurar", zone_where: "Dónde trabajas", zone_move_map: "Mueve el mapa para elegir el centro de tu zona.",
-  zone_radius: "Radio", zone_radius_note: "Recibes avisos de diagnosis hechas dentro de este radio, siempre en tu provincia.", zone_days: "Días", zone_hours_label: "Horario",
+  zone_radius: "Radio", zone_radius_note: "Recibes avisos de diagnosis hechas dentro de este radio.", zone_days: "Días", zone_hours_label: "Horario",
   from_time: "Desde", to_time: "Hasta", urgent_title: "Urgencias fuera de horario", urgent_sub: "Muestra «acepta urgencias» en tu perfil",
   zone_pick_day: "Elige al menos un día", zone_bad_hours: "La hora de fin debe ser después del inicio",
   quick_replies: "Respuestas rápidas", quick_replies_count: "{n} mensajes guardados", replies_note: "Tócalas en el chat para escribir la respuesta en un segundo. Puedes cambiarla antes de enviar.",
@@ -46,12 +47,12 @@ const es = {
   login_title: "Arregla tu casa con una foto",
   login_sub: "Fotografía el problema, la IA te dice cómo resolverlo o te conecta con un especialista verificado.",
   or_email: "o con tu correo", show_password: "Mostrar contraseña", hide_password: "Ocultar contraseña",
-  pro_card_title: "¿Eres especialista?", pro_card_text: "Recibe clientes en Turín con BeHappy",
+  pro_card_title: "¿Eres especialista?", pro_card_text: "Recibe clientes en tu zona con BeHappy",
   pro_signup_title: "Crea tu cuenta de especialista", pro_signup_sub: "Después completas tu perfil: oficio, foto y teléfono.",
   pro_title: "Clientes que ya fotografiaron el problema",
   pro_sub: "En BeHappy la gente llega a ti con la diagnosis hecha: sabes qué hace falta antes de responder.",
   pro_b1_t: "Pedidos claros", pro_b1: "Cada cliente te escribe con la foto y la diagnosis de la IA.",
-  pro_b2_t: "Clientes cerca de ti", pro_b2: "Empezamos en Turín: te encuentra quien necesita ayuda en tu zona.",
+  pro_b2_t: "Clientes cerca de ti", pro_b2: "Te encuentra quien necesita ayuda en tu zona.",
   pro_b3_t: "Perfil verificado", pro_b3: "Sube un documento y obtén la insignia de especialista verificado.",
   pro_b4_t: "Contacto directo", pro_b4: "Respondes por el chat de la app o por WhatsApp.",
   pro_how: "Cómo empezar", pro_s1: "Crea tu cuenta", pro_s2: "Completa tu perfil: oficio, foto y teléfono", pro_s3: "Responde a los clientes de tu zona",
@@ -82,7 +83,7 @@ const es = {
   safety: "Seguridad", materials: "Materiales", tools: "Herramientas", steps: "Pasos a seguir",
   time: "Tiempo", cost: "Coste aprox.", when_pro: "Cuándo llamar a un profesional",
   how_solve: "¿Cómo quieres resolverlo?", diy: "Lo hago yo", diy_sub: "Sigue la guía paso a paso",
-  hire: "Contratar especialista", hire_sub: "Elige entre los especialistas de Turín", recommended: "Recomendado",
+  hire: "Contratar especialista", hire_sub: "Elige entre los especialistas de tu zona", recommended: "Recomendado",
   not_home: "No parece un problema del hogar. Intenta otra foto.", retry: "Reintentar", scan_again: "Escanear de nuevo",
   diy_mode_on: "Modo hazlo tú: marca cada paso al completarlo", done_steps: "pasos completados",
   specialists_title: "Especialistas", search_ph: "Buscar por nombre", all: "Todos",
@@ -334,7 +335,19 @@ const it: typeof es = {
 };
 
 export type TKey = keyof typeof es;
-const dict = { es, it };
+const enDict: typeof es = en;
+const dict = { es, it, en: enDict };
+export const LANGS: Lang[] = ["es", "en", "it"];
+
+// First visit: use the phone/browser language when we have it, otherwise English.
+function deviceLang(): Lang {
+  let tag = "";
+  try {
+    tag = (typeof navigator !== "undefined" && (navigator as any).language) || Intl.DateTimeFormat().resolvedOptions().locale || "";
+  } catch {}
+  const base = tag.toLowerCase().slice(0, 2);
+  return base === "es" || base === "it" ? (base as Lang) : "en";
+}
 export const CATEGORIES = ["plumbing", "electrical", "hvac", "masonry", "carpentry"] as const;
 export const SUBTRADES: Record<string, string[]> = {
   masonry: ["muratura", "piastrellista", "pintura", "suelos", "tejados"],
@@ -351,7 +364,7 @@ const I18nContext = createContext<Ctx>({ lang: "es", setLang: () => {}, t: (k) =
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("es");
   useEffect(() => {
-    storage.getItem<string>("app_lang", "es").then((v) => setLangState(v === "it" ? "it" : "es"));
+    storage.getItem<string>("app_lang", "").then((v) => setLangState(v === "it" || v === "es" || v === "en" ? v : deviceLang()));
   }, []);
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
