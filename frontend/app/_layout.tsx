@@ -17,6 +17,7 @@ import { ToastProvider } from "@/src/toast";
 import { AppSplash } from "@/src/AppSplash";
 import { CameraPermissionPrompt } from "@/src/CameraPermissionPrompt";
 import { takeAfterLogin } from "@/src/postLogin";
+import { useTheme } from "@/src/theme";
 import { usePushSetup } from "@/src/push";
 
 LogBox.ignoreAllLogs(true);
@@ -69,6 +70,11 @@ function Gate() {
   );
 }
 
+function ThemedStatusBar() {
+  const { scheme } = useTheme();
+  return <StatusBar style={scheme === "dark" ? "light" : "dark"} />;
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -78,7 +84,7 @@ export default function RootLayout() {
             <I18nProvider>
               <ToastProvider>
                 <AuthProvider>
-                  <StatusBar style="dark" />
+                  <ThemedStatusBar />
                   <Gate />
                 </AuthProvider>
               </ToastProvider>

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { api, setToken, setUnauthorizedHandler } from "@/src/api";
+import { setProMode } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
 
 const TOKEN_KEY = "auth_token";
@@ -49,6 +50,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.user);
     remember(res.user);
   }, [remember]);
+
+  useEffect(() => {
+    setProMode(user?.role === "specialist" && !!user.specialist_id);
+  }, [user]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
