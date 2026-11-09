@@ -116,16 +116,16 @@ export function AppSplash() {
           <Image source={GLOW} style={styles.fill} contentFit="contain" />
         </Animated.View>
         {(["tl", "tr", "bl", "br"] as const).map((pos) => (
-          <Corner key={pos} pos={pos} progress={corners} color={colors.brandPrimary} />
+          <Corner key={pos} pos={pos} progress={corners} color={colors.sun} />
         ))}
 
         <Animated.View style={[styles.house, houseStyle]}>
           <Image source={ICON} style={styles.houseImg} contentFit="contain" />
         </Animated.View>
 
-        <Animated.View pointerEvents="none" style={[styles.scan, { backgroundColor: colors.brandPrimary, shadowColor: colors.brandPrimary }, scanStyle]} />
+        <Animated.View pointerEvents="none" style={[styles.scan, { backgroundColor: colors.sun, shadowColor: colors.sun }, scanStyle]} />
 
-        {!reduced && SPARKS.map((s, i) => <Spark key={i} {...s} progress={spark} color={colors.brandPrimary} />)}
+        {!reduced && SPARKS.map((s, i) => <Spark key={i} {...s} progress={spark} color={colors.sun} />)}
       </View>
 
       <View style={styles.texts}>

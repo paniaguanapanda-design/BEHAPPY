@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring } from "react-native-reanimated";
 import { imageSource } from "@/src/api";
-import { makeStyles, useTheme } from "@/src/theme";
+import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 export function Avatar({ uri, name, size = 48 }: { uri?: string | null; name?: string; size?: number }) {
   const styles = useStyles();
@@ -152,8 +152,8 @@ const useStyles = makeStyles((c) => ({
   avatarFallback: { backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: c.onBrandSecondary, fontWeight: "700" },
   btn: {
-    minHeight: 50,
-    borderRadius: 12,
+    minHeight: 52,
+    borderRadius: 999,
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -161,7 +161,7 @@ const useStyles = makeStyles((c) => ({
     gap: 8,
   },
   btnGhost: { borderWidth: 1, borderColor: c.border },
-  btnText: { fontSize: 16, fontWeight: "600" },
+  btnText: { fontSize: 16, fontWeight: "800" },
   verified: {
     flexDirection: "row",
     alignItems: "center",
@@ -172,5 +172,5 @@ const useStyles = makeStyles((c) => ({
     paddingVertical: 3,
   },
   verifiedText: { color: c.onBrandSecondary, fontSize: 12, fontWeight: "700" },
-  section: { fontSize: 20, fontWeight: "700", color: c.onSurface, letterSpacing: -0.3 },
+  section: { fontSize: 20, fontFamily: fonts.displayMedium, color: c.onSurface },
 }));

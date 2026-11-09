@@ -138,9 +138,9 @@ export default function Diagnosis() {
                 </View>
               )}
               {d.difficulty === "easy" && (
-                <View style={styles.outcome} testID="outcome-easy">
-                  <Ionicons name="hammer" size={22} color={colors.success} />
-                  <Text style={styles.outcomeText}>{t("easy_hint")}</Text>
+                <View style={[styles.outcome, styles.outcomeSun]} testID="outcome-easy">
+                  <Ionicons name="happy-outline" size={34} color={colors.onSun} />
+                  <Text style={[styles.outcomeText, styles.outcomeSunText]}>{t("easy_hint")}</Text>
                 </View>
               )}
 
@@ -237,15 +237,17 @@ export default function Diagnosis() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   abs: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
-  hero: { height: 320, justifyContent: "flex-end" },
+  hero: { height: 340, justifyContent: "flex-end" },
   back: { position: "absolute", left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: c.scrim, alignItems: "center", justifyContent: "center" },
-  heroContent: { padding: 24, gap: 12 },
+  heroContent: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 52, gap: 12 },
   tagRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  catTag: { backgroundColor: c.brandSecondary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-  catText: { color: c.onBrandSecondary, fontWeight: "700", fontSize: 13 },
-  title: { color: c.onSurfaceInverse, fontSize: 28, fontFamily: fonts.display, letterSpacing: -0.6 },
-  content: { padding: 16, gap: 24 },
-  outcome: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, gap: 10 },
+  catTag: { backgroundColor: c.sun, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  catText: { color: c.onSun, fontWeight: "800", fontSize: 13 },
+  title: { color: c.onSurfaceInverse, fontSize: 30, lineHeight: 34, fontFamily: fonts.display },
+  content: { padding: 16, paddingTop: 24, gap: 24, marginTop: -32, backgroundColor: c.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32 },
+  outcome: { padding: 16, borderRadius: 24, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, gap: 10 },
+  outcomeSun: { backgroundColor: c.sun, borderColor: c.sun, flexDirection: "row", alignItems: "center", gap: 14 },
+  outcomeSunText: { flex: 1, color: c.onSun, fontWeight: "800" },
   actionBox: { padding: 16, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 2, borderColor: c.brandPrimary, gap: 8 },
   actionLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", color: c.muted },
   actionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -268,7 +270,7 @@ const useStyles = makeStyles((c) => ({
   recTag: { alignSelf: "flex-start", backgroundColor: c.brandPrimary, color: c.onBrandPrimary, fontSize: 11, fontWeight: "700", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, overflow: "hidden" },
   choiceTitle: { fontSize: 16, fontWeight: "800", color: c.onSurface },
   choiceSub: { fontSize: 13, color: c.muted, lineHeight: 18 },
-  card: { borderRadius: 12, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, marginTop: -12 },
+  card: { borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, marginTop: -12 },
   matRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
   divider: { borderTopWidth: 1, borderTopColor: c.divider },
   matName: { flex: 1, fontSize: 15, color: c.onSurface },
@@ -280,7 +282,7 @@ const useStyles = makeStyles((c) => ({
   progress: { color: c.brandTertiary, fontWeight: "700", fontSize: 15 },
   diyBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, backgroundColor: c.brandSecondary },
   diyText: { color: c.onBrandSecondary, fontSize: 13, flex: 1, fontWeight: "600" },
-  step: { flexDirection: "row", gap: 12, padding: 16, borderRadius: 12, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
+  step: { flexDirection: "row", gap: 12, padding: 16, borderRadius: 20, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
   stepDone: { backgroundColor: c.brandSecondary, borderColor: c.brandSecondary },
   stepNum: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
   stepNumText: { color: c.onBrandPrimary, fontWeight: "800" },

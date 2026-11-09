@@ -14,7 +14,7 @@ async function sendToken(lang: string) {
     await Notifications.setNotificationChannelAsync("default", {
       name: "BeHappy",
       importance: Notifications.AndroidImportance.HIGH,
-      lightColor: "#FF6B00",
+      lightColor: "#0B5C55",
     });
   }
   const projectId = Constants.expoConfig?.extra?.eas?.projectId;

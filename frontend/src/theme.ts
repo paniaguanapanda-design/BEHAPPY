@@ -5,40 +5,45 @@ import { Appearance, StyleSheet, useColorScheme } from "react-native";
 export type ColorScheme = "light" | "dark";
 
 const light = {
-  // Same palette as be-happyapp.com: orange + navy on cool light greys.
-  surface: "#F4F6F9",
-  onSurface: "#0A1628",
+  // BE HAPPY "fresh & calm": deep teal + sunny yellow on a mint-white ground.
+  surface: "#F2FBF7",
+  onSurface: "#0E2A27",
   surfaceSecondary: "#FFFFFF",
-  onSurfaceSecondary: "#0A1628",
-  surfaceTertiary: "#EAEEF3",
-  onSurfaceTertiary: "#46546A",
-  surfaceInverse: "#0A1628",
+  onSurfaceSecondary: "#0E2A27",
+  surfaceTertiary: "#E3F3EE",
+  onSurfaceTertiary: "#35524E",
+  surfaceInverse: "#0B5C55",
   onSurfaceInverse: "#FFFFFF",
-  muted: "#5F6B7E",
+  muted: "#4A6662",
 
-  // Orange buttons carry navy text (6.5:1); white on orange is only 2.9:1.
-  brand: "#FF6B00",
-  onBrand: "#0A1628",
-  brandPrimary: "#FF6B00",
-  onBrandPrimary: "#0A1628",
-  brandSecondary: "#FFF4EB",
-  onBrandSecondary: "#9A3F00",
-  brandTertiary: "#1E3A5F",
+  // Teal carries white text (7.6:1) and is safe as a text/icon tint on light grounds.
+  brand: "#0B5C55",
+  onBrand: "#FFFFFF",
+  brandPrimary: "#0B5C55",
+  onBrandPrimary: "#FFFFFF",
+  brandSecondary: "#D6F0E8",
+  onBrandSecondary: "#0B5C55",
+  brandTertiary: "#0E2A27",
   onBrandTertiary: "#FFFFFF",
 
-  success: "#34C759",
+  // Sunny yellow: the "happy" accent for the main call to action (scan) and highlights. Always dark text on it.
+  sun: "#FFD23F",
+  onSun: "#0E2A27",
+  sunSoft: "#FFF4C7",
+
+  success: "#1E8E5A",
   onSuccess: "#FFFFFF",
-  warning: "#FF9500",
-  onWarning: "#FFFFFF",
-  error: "#FF3B30",
+  warning: "#F2A900",
+  onWarning: "#0E2A27",
+  error: "#D93A2B",
   onError: "#FFFFFF",
-  info: "#007AFF",
+  info: "#1F6FD1",
   onInfo: "#FFFFFF",
 
-  border: "#E1E6ED",
-  borderStrong: "#C7CFDA",
-  divider: "#E1E6ED",
-  scrim: "rgba(10,22,40,0.55)",
+  border: "#CFE6DE",
+  borderStrong: "#A9D9C9",
+  divider: "#E3F3EE",
+  scrim: "rgba(14,42,39,0.55)",
 };
 
 export type ThemeColors = typeof light;
@@ -48,10 +53,28 @@ export const defaultScheme = "light" satisfies ColorScheme;
 export const themes: { light: ThemeColors; dark?: ThemeColors } = { light };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 };
-// Display face for titles, embedded at build time by the expo-font plugin (app.json).
-export const fonts = { display: "BricolageGrotesque_800ExtraBold" };
+// Display face for titles (Fredoka) and a monospace for the Pro data (JetBrains Mono), loaded in app/_layout.tsx.
+export const fonts = {
+  display: "Fredoka_700Bold",
+  displayMedium: "Fredoka_600SemiBold",
+  mono: "JetBrainsMono_500Medium",
+};
 
-export const radius = { sm: 6, md: 12, lg: 20, pill: 999 };
+export const radius = { sm: 8, md: 16, lg: 24, pill: 999 };
+
+// The specialist area ("Zona Pro") keeps a dark, technical look; the yellow is the shared thread with the client side.
+export const pro = {
+  bg: "#05090F",
+  surface: "#0E1624",
+  card: "#172235",
+  line: "#263247",
+  text: "#E8EDF5",
+  muted: "#A9B4C4",
+  dim: "#8592A6",
+  accent: "#FFD23F",
+  onAccent: "#05090F",
+  ok: "#4ADE80",
+};
 
 export function setColorScheme(scheme: ColorScheme | null) {
   Appearance.setColorScheme?.(scheme ?? "unspecified");

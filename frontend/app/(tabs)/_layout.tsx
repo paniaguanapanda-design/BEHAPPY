@@ -1,11 +1,9 @@
-import { Platform } from "react-native";
 import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { usesNativeTabs } from "@/src/navigation";
 import { useI18n } from "@/src/i18n";
 import { useTheme } from "@/src/theme";
-import { BouncyIcon } from "@/src/ui";
+import { AppTabBar } from "@/src/TabBar";
 
 export default function TabsLayout() {
   const { t } = useI18n();
@@ -42,34 +40,14 @@ export default function TabsLayout() {
     );
   }
 
-  const icon = (on: React.ComponentProps<typeof Ionicons>["name"], off: React.ComponentProps<typeof Ionicons>["name"]) => {
-    const TabIcon = ({ focused, color }: { focused: boolean; color: import("react-native").ColorValue }) => (
-      <BouncyIcon name={focused ? on : off} size={24} color={color} active={focused} />
-    );
-    return TabIcon;
-  };
-
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.brandPrimary,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: {
-          backgroundColor: colors.surfaceSecondary,
-          borderTopColor: colors.border,
-          ...(Platform.OS === "web" ? { height: 64 } : {}),
-        },
-        tabBarItemStyle: { alignSelf: "center" },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-      }}
-    >
-      <Tabs.Screen name="index" options={{ title: t("tab_scan"), tabBarButtonTestID: "tab-scan", tabBarIcon: icon("scan-circle", "scan-circle-outline") }} />
-      <Tabs.Screen name="requests" options={{ title: t("tab_requests"), tabBarButtonTestID: "tab-requests", tabBarIcon: icon("document-text", "document-text-outline") }} />
-      <Tabs.Screen name="specialists" options={{ title: t("tab_specialists"), tabBarButtonTestID: "tab-specialists", tabBarIcon: icon("people", "people-outline") }} />
-      <Tabs.Screen name="ferreterias" options={{ title: t("tab_stores"), tabBarButtonTestID: "tab-stores", tabBarIcon: icon("storefront", "storefront-outline") }} />
-      <Tabs.Screen name="messages" options={{ title: t("tab_messages"), tabBarButtonTestID: "tab-messages", tabBarIcon: icon("chatbubbles", "chatbubbles-outline") }} />
-      <Tabs.Screen name="profile" options={{ title: t("tab_profile"), tabBarButtonTestID: "tab-profile", tabBarIcon: icon("person-circle", "person-circle-outline") }} />
+    <Tabs tabBar={(props) => <AppTabBar {...props} />} screenOptions={{ headerShown: false }}>
+      <Tabs.Screen name="index" options={{ title: t("tab_home"), tabBarButtonTestID: "tab-home" }} />
+      <Tabs.Screen name="requests" options={{ title: t("tab_requests"), tabBarButtonTestID: "tab-requests" }} />
+      <Tabs.Screen name="specialists" options={{ title: t("tab_specialists"), tabBarButtonTestID: "tab-specialists" }} />
+      <Tabs.Screen name="ferreterias" options={{ title: t("tab_stores"), tabBarButtonTestID: "tab-stores" }} />
+      <Tabs.Screen name="messages" options={{ title: t("tab_messages"), tabBarButtonTestID: "tab-messages" }} />
+      <Tabs.Screen name="profile" options={{ title: t("tab_profile"), tabBarButtonTestID: "tab-profile" }} />
     </Tabs>
   );
 }
