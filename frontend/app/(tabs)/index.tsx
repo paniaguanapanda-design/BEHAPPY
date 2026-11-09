@@ -148,7 +148,7 @@ const useStyles = makeStyles((c) => ({
   helloChip: { backgroundColor: "rgba(255,255,255,0.14)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, flexShrink: 1 },
   hello: { fontSize: 13, color: c.onSurfaceInverse, fontWeight: "700" },
   title: { fontSize: 30, lineHeight: 34, fontFamily: fonts.displayMedium, color: c.onSurfaceInverse },
-  subtitle: { fontSize: 15, color: c.brandSecondary, fontWeight: "600" },
+  subtitle: { fontSize: 15, color: "rgba(255,255,255,0.82)", fontWeight: "600" },
   lift: { marginTop: -48 },
   hero: {
     marginHorizontal: 16,
