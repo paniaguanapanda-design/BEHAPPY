@@ -21,7 +21,7 @@ import Animated, {
 import { useI18n } from "@/src/i18n";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-const ICON = require("@/assets/images/splash-icon.png");
+const ICON = require("@/assets/images/logo-house-sun.png");
 const BG = require("@/assets/images/splash-bg.jpg"); // navy, lighter in the middle
 const GLOW = require("@/assets/images/splash-glow.png"); // soft orange light behind the house
 // Same size and place as the native splash (app.json, imageWidth 200): the hand-off is seamless.

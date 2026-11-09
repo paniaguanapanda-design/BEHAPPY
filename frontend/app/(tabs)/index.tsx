@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Image } from "expo-image";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useAuth } from "@/src/auth";
@@ -10,6 +11,7 @@ import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { setPendingScanNote, useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
+import { InstallPrompt } from "@/src/InstallPrompt";
 import { BouncyIcon, Button } from "@/src/ui";
 
 export default function Home() {
@@ -31,8 +33,8 @@ export default function Home() {
         <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
           <View style={styles.headerRow}>
             <View style={styles.logo}>
-              <Ionicons name="happy-outline" size={26} color={colors.sun} />
-              <Text style={styles.logoText}>be happy</Text>
+              <Image source={require("@/assets/images/logo-house-sun.png")} style={styles.logoImg} contentFit="contain" accessibilityLabel="BE HAPPY" />
+              <Text style={styles.logoText}>BeHappy</Text>
             </View>
             <View style={styles.helloChip}>
               <Text style={styles.hello} testID="home-greeting" numberOfLines={1}>
@@ -94,6 +96,10 @@ export default function Home() {
           </Pressable>
         </Animated.View>
 
+        <View style={styles.install}>
+          <InstallPrompt />
+        </View>
+
         <View style={styles.requestCard}>
           <Text style={styles.requestTitle}>{t("request_note_title")}</Text>
           <TextInput
@@ -137,6 +143,7 @@ const useStyles = makeStyles((c) => ({
   },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12 },
   logo: { flexDirection: "row", alignItems: "center", gap: 8 },
+  logoImg: { width: 34, height: 34 },
   logoText: { color: c.onSurfaceInverse, fontFamily: fonts.display, fontSize: 22 },
   helloChip: { backgroundColor: "rgba(255,255,255,0.14)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, flexShrink: 1 },
   hello: { fontSize: 13, color: c.onSurfaceInverse, fontWeight: "700" },
@@ -175,6 +182,7 @@ const useStyles = makeStyles((c) => ({
     gap: 8,
   },
   galleryText: { color: c.brandPrimary, fontWeight: "800", fontSize: 15 },
+  install: { marginHorizontal: 16, marginTop: 16 },
   shortcuts: { flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 16 },
   shortcut: {
     flex: 1,

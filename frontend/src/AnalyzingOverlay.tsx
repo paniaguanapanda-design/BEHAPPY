@@ -1,11 +1,11 @@
 import React, { useEffect } from "react";
 import { Modal, Text, View } from "react-native";
-import { Ionicons } from "@react-native-vector-icons/ionicons";
+import { Image } from "expo-image";
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { useI18n } from "@/src/i18n";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-// While the AI looks at the photo: a sunny face that bobs, with a halo spreading out behind it.
+// While the AI looks at the photo: the BE HAPPY house bobs, with a halo spreading out behind it.
 export function AnalyzingOverlay({ visible }: { visible: boolean }) {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -28,7 +28,7 @@ export function AnalyzingOverlay({ visible }: { visible: boolean }) {
           <View style={styles.faceWrap}>
             <Animated.View style={[styles.halo, { backgroundColor: colors.sun }, haloStyle]} />
             <Animated.View style={[styles.face, { backgroundColor: colors.sun }, faceStyle]}>
-              <Ionicons name="happy-outline" size={52} color={colors.onSun} />
+              <Image source={require("@/assets/images/logo-house-teal.png")} style={{ width: 60, height: 60 }} contentFit="contain" />
             </Animated.View>
           </View>
           <Text style={styles.title}>{t("analyzing")}</Text>
