@@ -56,8 +56,8 @@ SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "teja
 LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
-GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
 _gemini_client = None
 
 
@@ -110,29 +110,65 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
     if image_b64:
         contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
     contents.append(prompt)
+    model = _working_model["name"] or GEMINI_MODEL
     try:
-        response = await get_gemini().aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction="You output valid JSON only, no markdown.",
-                response_mime_type="application/json",
-                thinking_config=types.ThinkingConfig(thinking_level="low"),
-            ),
-        )
-        return parse_json(response.text or "")
+        return await _gemini_call(model, contents)
     except Exception as e:
-        # Preview models get overloaded or retired: retry once with the stable model so the user still gets an answer.
-        logger.warning("Gemini %s failed (%s); retrying with %s", GEMINI_MODEL, e, GEMINI_FALLBACK_MODEL)
-        response = await get_gemini().aio.models.generate_content(
-            model=GEMINI_FALLBACK_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction="You output valid JSON only, no markdown.",
-                response_mime_type="application/json",
-            ),
-        )
-        return parse_json(response.text or "")
+        # Google retires models (especially previews): try the fallback, then whatever "flash" model the key can
+        # use now, and remember the one that works so the next calls go straight to it.
+        logger.warning("Gemini %s failed (%s); looking for another model", model, e)
+        last: Exception = e
+        try:
+            available = await run_in_threadpool(_available_flash_models)
+        except Exception as le:
+            logger.warning("Gemini ListModels failed: %s", le)
+            available = []
+        tried = {model}
+        for candidate in [GEMINI_FALLBACK_MODEL, *available][:4]:
+            if candidate in tried:
+                continue
+            tried.add(candidate)
+            try:
+                result = await _gemini_call(candidate, contents)
+                _working_model["name"] = candidate
+                logger.warning("Gemini: now using %s (set GEMINI_MODEL in Render to make it permanent)", candidate)
+                return result
+            except Exception as ce:
+                logger.warning("Gemini %s failed too: %s", candidate, ce)
+                last = ce
+        raise last
+
+
+_working_model: dict = {"name": None}
+
+
+async def _gemini_call(model: str, contents: list) -> dict:
+    cfg = dict(system_instruction="You output valid JSON only, no markdown.", response_mime_type="application/json")
+    if model.startswith("gemini-3"):
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+    response = await get_gemini().aio.models.generate_content(
+        model=model, contents=contents, config=types.GenerateContentConfig(**cfg)
+    )
+    return parse_json(response.text or "")
+
+
+def _available_flash_models() -> list:
+    """Text "flash" models this API key can call now, newest stable first."""
+    names = []
+    for m in get_gemini().models.list():
+        name = (m.name or "").removeprefix("models/")
+        actions = getattr(m, "supported_actions", None) or []
+        if "flash" not in name or (actions and "generateContent" not in actions):
+            continue
+        if any(x in name for x in ("tts", "image", "audio", "live", "embedding", "lite", "thinking")):
+            continue
+        names.append(name)
+
+    def rank(n: str):
+        v = re.search(r"gemini-(\d+(?:\.\d+)?)", n)
+        return (float(v.group(1)) if v else 0.0, "preview" not in n and "exp" not in n)
+
+    return sorted(names, key=rank, reverse=True)
 
 
 async def caption_both(caption: str) -> dict:
