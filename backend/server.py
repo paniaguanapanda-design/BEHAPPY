@@ -57,6 +57,7 @@ LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_THINKING_BUDGET = int(os.environ.get("GEMINI_THINKING_BUDGET", "256"))
 GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
 _gemini_client = None
 
@@ -146,6 +147,9 @@ async def _gemini_call(model: str, contents: list) -> dict:
     cfg = dict(system_instruction="You output valid JSON only, no markdown.", response_mime_type="application/json")
     if model.startswith("gemini-3"):
         cfg["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+    elif model.startswith("gemini-2.5"):
+        # 2.5 models think without limit by default, which makes a photo take much longer: keep it short.
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=GEMINI_THINKING_BUDGET)
     response = await get_gemini().aio.models.generate_content(
         model=model, contents=contents, config=types.GenerateContentConfig(**cfg)
     )
