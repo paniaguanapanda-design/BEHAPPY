@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#F8F5EE"
+        "backgroundColor": "#0B5C55"
       },
       "package": "com.paniaguanapanda.behappy",
       "googleServicesFile": "./google-services.json",
@@ -43,7 +43,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#0A1628"
+          "backgroundColor": "#0B5C55"
         }
       ],
       [
@@ -81,7 +81,7 @@
       [
         "expo-notifications",
         {
-          "color": "#FF6B00",
+          "color": "#0B5C55",
           "icon": "./assets/images/notification-icon.png"
         }
       ]

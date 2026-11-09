@@ -106,11 +106,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loginWithGoogle = useCallback(async () => {
+    if (!GOOGLE_WEB_CLIENT_ID) throw new Error("Google no esta configurado.");
     if (Platform.OS === "web") {
-      window.alert("El acceso con Google solo esta disponible en la app de Android.");
+      const { googleWebIdToken } = await import("@/src/googleWeb");
+      const lang = typeof navigator !== "undefined" && navigator.language?.startsWith("it") ? "it" : "es";
+      const token = await googleWebIdToken(GOOGLE_WEB_CLIENT_ID, lang, lang === "it" ? "Annulla" : "Cancelar");
+      if (!token) return; // el usuario cerro la ventana
+      await applySession(await api<{ session_token: string; user: User }>("/auth/google", { body: { id_token: token } }));
       return;
     }
-    if (!GOOGLE_WEB_CLIENT_ID) throw new Error("Google no esta configurado.");
     const { GoogleSignin, isSuccessResponse } = await import("@react-native-google-signin/google-signin");
     GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });

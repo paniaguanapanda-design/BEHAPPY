@@ -4,6 +4,9 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { LogBox, Platform, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { useFonts } from "expo-font";
+import { Fredoka_600SemiBold, Fredoka_700Bold } from "@expo-google-fonts/fredoka";
+import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
@@ -23,6 +26,8 @@ function Gate() {
   const segments = useSegments();
   const router = useRouter();
   const [splashDone, setSplashDone] = useState(false);
+  // If a font fails to load the app still opens with the system font.
+  const [fontsLoaded, fontError] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold, JetBrainsMono_500Medium });
   const { lang } = useI18n();
   usePushSetup(user?.user_id ?? null, lang);
 
@@ -53,7 +58,7 @@ function Gate() {
     }
   }, [user, loading, segments, router]);
 
-  if (loading || !splashDone) return <AppSplash />;
+  if (loading || !splashDone || (!fontsLoaded && !fontError)) return <AppSplash />;
   return (
     <>
       <Stack screenOptions={{ headerShown: false }}>

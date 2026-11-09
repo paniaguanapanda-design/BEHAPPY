@@ -1,6 +1,9 @@
 import { uploadForm } from "@/src/utils/upload";
 
-export const API = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
+// The web app (app.be-happyapp.com) calls the backend through its own domain: Vercel forwards /api/* to the
+// server (see vercel.json), so the browser never makes a cross-origin request.
+const SAME_ORIGIN_API = process.env.EXPO_PUBLIC_API_SAME_ORIGIN === "1" && typeof window !== "undefined";
+export const API = SAME_ORIGIN_API ? "/api" : `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
 let token: string | null = null;
 let onUnauthorized: (() => void) | null = null;

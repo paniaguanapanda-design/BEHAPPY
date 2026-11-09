@@ -13,9 +13,10 @@ import { useToast } from "@/src/toast";
 import { Button } from "@/src/ui";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
+import { InstallPrompt } from "@/src/InstallPrompt";
 import { setAfterLogin, takeProIntent } from "@/src/postLogin";
 
-const LOGO = require("@/assets/images/splash-icon.png");
+const LOGO = require("@/assets/images/logo-house-sun.png");
 // The same photo as the website: a phone scanning a dripping faucet.
 const HERO = require("@/assets/images/login-hero.jpg");
 const GOOGLE_G = require("@/assets/images/google-g.png");
@@ -179,6 +180,7 @@ export default function Login() {
           </View>
         ) : (
         <View style={styles.form}>
+          <InstallPrompt />
           <Pressable
             testID="google-login-button"
             onPress={google}

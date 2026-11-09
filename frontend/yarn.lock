@@ -703,6 +703,16 @@
     "@eslint/core" "^0.15.1"
     levn "^0.4.1"
 
+"@expo-google-fonts/fredoka@^0.4.1":
+  version "0.4.1"
+  resolved "https://registry.yarnpkg.com/@expo-google-fonts/fredoka/-/fredoka-0.4.1.tgz#3e3875a28421ddf51aaaa99021916cc06bab33a8"
+  integrity sha512-px3uHDidG1RI7mMAjfKQktK9yZoVn/Uvqgp1G/Zkd6ZN9flXFxhUoPDRZdcCj2knFvkKmlvOx96SD3j4fxq7ig==
+
+"@expo-google-fonts/jetbrains-mono@^0.4.1":
+  version "0.4.1"
+  resolved "https://registry.yarnpkg.com/@expo-google-fonts/jetbrains-mono/-/jetbrains-mono-0.4.1.tgz#39d1390c386a7dd5ed5171e8acbbf41b86afd099"
+  integrity sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug==
+
 "@expo-google-fonts/material-symbols@^0.4.1":
   version "0.4.51"
   resolved "https://registry.yarnpkg.com/@expo-google-fonts/material-symbols/-/material-symbols-0.4.51.tgz#661a35d243330151385e1311a9a3ddb2d2d813fa"

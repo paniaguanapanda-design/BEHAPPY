@@ -21,7 +21,7 @@ import Animated, {
 import { useI18n } from "@/src/i18n";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-const ICON = require("@/assets/images/splash-icon.png");
+const ICON = require("@/assets/images/logo-house-sun.png");
 const BG = require("@/assets/images/splash-bg.jpg"); // navy, lighter in the middle
 const GLOW = require("@/assets/images/splash-glow.png"); // soft orange light behind the house
 // Same size and place as the native splash (app.json, imageWidth 200): the hand-off is seamless.
@@ -116,16 +116,16 @@ export function AppSplash() {
           <Image source={GLOW} style={styles.fill} contentFit="contain" />
         </Animated.View>
         {(["tl", "tr", "bl", "br"] as const).map((pos) => (
-          <Corner key={pos} pos={pos} progress={corners} color={colors.brandPrimary} />
+          <Corner key={pos} pos={pos} progress={corners} color={colors.sun} />
         ))}
 
         <Animated.View style={[styles.house, houseStyle]}>
           <Image source={ICON} style={styles.houseImg} contentFit="contain" />
         </Animated.View>
 
-        <Animated.View pointerEvents="none" style={[styles.scan, { backgroundColor: colors.brandPrimary, shadowColor: colors.brandPrimary }, scanStyle]} />
+        <Animated.View pointerEvents="none" style={[styles.scan, { backgroundColor: colors.sun, shadowColor: colors.sun }, scanStyle]} />
 
-        {!reduced && SPARKS.map((s, i) => <Spark key={i} {...s} progress={spark} color={colors.brandPrimary} />)}
+        {!reduced && SPARKS.map((s, i) => <Spark key={i} {...s} progress={spark} color={colors.sun} />)}
       </View>
 
       <View style={styles.texts}>
