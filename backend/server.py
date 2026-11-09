@@ -56,7 +56,8 @@ SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "teja
 LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 
-GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
 _gemini_client = None
 
 
@@ -109,16 +110,29 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
     if image_b64:
         contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
     contents.append(prompt)
-    response = await get_gemini().aio.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction="You output valid JSON only, no markdown.",
-            response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_level="low"),
-        ),
-    )
-    return parse_json(response.text or "")
+    try:
+        response = await get_gemini().aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction="You output valid JSON only, no markdown.",
+                response_mime_type="application/json",
+                thinking_config=types.ThinkingConfig(thinking_level="low"),
+            ),
+        )
+        return parse_json(response.text or "")
+    except Exception as e:
+        # Preview models get overloaded or retired: retry once with the stable model so the user still gets an answer.
+        logger.warning("Gemini %s failed (%s); retrying with %s", GEMINI_MODEL, e, GEMINI_FALLBACK_MODEL)
+        response = await get_gemini().aio.models.generate_content(
+            model=GEMINI_FALLBACK_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction="You output valid JSON only, no markdown.",
+                response_mime_type="application/json",
+            ),
+        )
+        return parse_json(response.text or "")
 
 
 async def caption_both(caption: str) -> dict:
