@@ -16,6 +16,17 @@ const w = (typeof window !== "undefined" ? window : {}) as Window & { __bip?: BI
 const getDeferred = () => (Platform.OS === "web" ? w.__bip ?? null : null);
 
 const COPY = {
+  en: {
+    title: "Install BeHappy",
+    sub: "Keep it on your home screen, like an app.",
+    button: "Install",
+    iosTitle: "Install BeHappy on your iPhone",
+    ios: "Tap Share and then «Add to Home Screen».",
+    other: "Open the browser menu (⋮) and choose «Install app» or «Add to Home screen».",
+    close: "Close",
+    waiting: "Getting the install ready…",
+    done: "Installed! Find it on your home screen.",
+  },
   es: {
     title: "Instala BeHappy",
     sub: "Tenla en tu pantalla de inicio, como una app.",
@@ -50,7 +61,7 @@ export function InstallPrompt({ dark = false }: { dark?: boolean }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const { lang } = useI18n();
-  const c = COPY[lang === "it" ? "it" : "es"];
+  const c = COPY[lang];
   const [, force] = useState(0);
   const [closed, setClosed] = useState(false);
   const [help, setHelp] = useState(false);

@@ -53,7 +53,7 @@ api = APIRouter(prefix="/api")
 CATEGORIES = ["plumbing", "electrical", "hvac", "masonry", "carpentry"]
 SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "tejados"],
              "carpentry": ["puertas", "ventanas", "parquet", "cerrajeria", "cristales"]}
-LANG_NAME = {"es": "Spanish", "it": "Italian"}
+LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 
 GEMINI_MODEL = "gemini-3-flash-preview"
