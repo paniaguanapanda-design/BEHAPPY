@@ -56,7 +56,7 @@ SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "teja
 LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_THINKING_BUDGET = int(os.environ.get("GEMINI_THINKING_BUDGET", "256"))
 GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
 _gemini_client = None
@@ -150,10 +150,18 @@ async def _gemini_call(model: str, contents: list) -> dict:
     elif model.startswith("gemini-2.5"):
         # 2.5 models think without limit by default, which makes a photo take much longer: keep it short.
         cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=GEMINI_THINKING_BUDGET)
-    response = await get_gemini().aio.models.generate_content(
-        model=model, contents=contents, config=types.GenerateContentConfig(**cfg)
-    )
-    return parse_json(response.text or "")
+    # "High demand" (503) and rate limits (429) are usually over in seconds: wait a little and try again.
+    for attempt in range(3):
+        try:
+            response = await get_gemini().aio.models.generate_content(
+                model=model, contents=contents, config=types.GenerateContentConfig(**cfg)
+            )
+            return parse_json(response.text or "")
+        except Exception as e:
+            busy = any(x in str(e) for x in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"))
+            if not busy or attempt == 2:
+                raise
+            await asyncio.sleep(1.5 * (attempt + 1))
 
 
 def _available_flash_models() -> list:
