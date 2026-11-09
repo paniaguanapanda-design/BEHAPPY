@@ -10,19 +10,10 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type BIPEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
-let deferred: BIPEvent | null = null;
-const listeners = new Set<() => void>();
-if (Platform.OS === "web" && typeof window !== "undefined") {
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    deferred = e as BIPEvent;
-    listeners.forEach((l) => l());
-  });
-  window.addEventListener("appinstalled", () => {
-    deferred = null;
-    listeners.forEach((l) => l());
-  });
-}
+// The install announcement is caught by a tiny script in public/index.html (it often fires before this bundle
+// loads) and kept on window.__bip; "bip-change" tells us when it arrives or the app gets installed.
+const w = (typeof window !== "undefined" ? window : {}) as Window & { __bip?: BIPEvent | null; __bipInstalled?: boolean };
+const getDeferred = () => (Platform.OS === "web" ? w.__bip ?? null : null);
 
 const COPY = {
   es: {
@@ -33,6 +24,8 @@ const COPY = {
     ios: "Pulsa Compartir y después «Añadir a pantalla de inicio».",
     other: "Abre el menú del navegador (⋮) y elige «Instalar app» o «Añadir a pantalla de inicio».",
     close: "Cerrar",
+    waiting: "Preparando la instalación…",
+    done: "¡Instalada! Búscala en tu pantalla de inicio.",
   },
   it: {
     title: "Installa BeHappy",
@@ -42,6 +35,8 @@ const COPY = {
     ios: "Tocca Condividi e poi «Aggiungi alla schermata Home».",
     other: "Apri il menu del browser (⋮) e scegli «Installa app» o «Aggiungi a schermata Home».",
     close: "Chiudi",
+    waiting: "Preparo l'installazione…",
+    done: "Installata! La trovi nella schermata Home.",
   },
 };
 
@@ -59,29 +54,64 @@ export function InstallPrompt({ dark = false }: { dark?: boolean }) {
   const [, force] = useState(0);
   const [closed, setClosed] = useState(false);
   const [help, setHelp] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
-    const l = () => force((n) => n + 1);
-    listeners.add(l);
-    return () => {
-      listeners.delete(l);
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const l = () => {
+      if (w.__bipInstalled) setInstalled(true);
+      force((n) => n + 1);
     };
+    window.addEventListener("bip-change", l);
+    return () => window.removeEventListener("bip-change", l);
   }, []);
 
   if (Platform.OS !== "web" || closed || isStandalone()) return null;
 
   const ios = isIOS();
-  const install = async () => {
-    if (deferred) {
-      const ev = deferred;
-      deferred = null;
-      await ev.prompt();
-      await ev.userChoice.catch(() => null);
-      force((n) => n + 1);
-    } else {
-      setHelp(true);
-    }
+  // Opens the browser's own install dialog; one more tap on its "Instalar" and the app is installed.
+  const openDialog = async (ev: BIPEvent) => {
+    w.__bip = null; // the browser lets each announcement be used once
+    await ev.prompt();
+    const choice = await ev.userChoice.catch(() => null);
+    if (choice?.outcome === "accepted") setInstalled(true);
+    force((n) => n + 1);
   };
+  const install = async () => {
+    const ev = getDeferred();
+    if (ev) return openDialog(ev);
+    // Chrome may still be checking the app: wait a few seconds for it before falling back to the steps.
+    setWaiting(true);
+    const ready = await new Promise<BIPEvent | null>((resolve) => {
+      const t = setTimeout(() => {
+        window.removeEventListener("bip-change", on);
+        resolve(getDeferred());
+      }, 4000);
+      const on = () => {
+        if (getDeferred()) {
+          clearTimeout(t);
+          window.removeEventListener("bip-change", on);
+          resolve(getDeferred());
+        }
+      };
+      window.addEventListener("bip-change", on);
+    });
+    setWaiting(false);
+    if (ready) return openDialog(ready);
+    setHelp(true);
+  };
+
+  if (installed) {
+    return (
+      <View style={[styles.card, dark && styles.cardDark]} testID="install-done">
+        <View style={styles.row}>
+          <Ionicons name="checkmark-circle" size={28} color={colors.success} />
+          <Text style={[styles.title, { flex: 1 }, dark && styles.titleDark]}>{c.done}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.card, dark && styles.cardDark]} testID="install-prompt">
@@ -91,7 +121,7 @@ export function InstallPrompt({ dark = false }: { dark?: boolean }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, dark && styles.titleDark]}>{ios ? c.iosTitle : c.title}</Text>
-          <Text style={[styles.sub, dark && styles.subDark]}>{ios || help ? (ios ? c.ios : c.other) : c.sub}</Text>
+          <Text style={[styles.sub, dark && styles.subDark]}>{waiting ? c.waiting : ios || help ? (ios ? c.ios : c.other) : c.sub}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={c.close} hitSlop={10} onPress={() => setClosed(true)}>
           <Ionicons name="close" size={20} color={dark ? "#FFFFFF" : colors.muted} />
@@ -102,7 +132,8 @@ export function InstallPrompt({ dark = false }: { dark?: boolean }) {
           testID="install-button"
           accessibilityRole="button"
           onPress={install}
-          style={({ pressed }) => [styles.btn, pressed && { transform: [{ scale: 0.97 }] }]}
+          disabled={waiting}
+          style={({ pressed }) => [styles.btn, (pressed || waiting) && { transform: [{ scale: 0.97 }], opacity: waiting ? 0.7 : 1 }]}
         >
           <Ionicons name="download-outline" size={18} color={colors.onSun} />
           <Text style={styles.btnText}>{c.button}</Text>
