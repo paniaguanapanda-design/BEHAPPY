@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#F2FBF7"
+        "backgroundColor": "#0B5C55"
       },
       "package": "com.paniaguanapanda.behappy",
       "googleServicesFile": "./google-services.json",
