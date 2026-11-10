@@ -30,7 +30,14 @@ async def test_text_only_home_request_creates_specialist_diagnosis(api, monkeypa
     )
 
     assert response.status_code == 200, response.text
-    diagnosis = response.json()
+    assert response.json()["status"] == "processing"
+    import asyncio
+    for _ in range(50):  # the analysis runs in the background
+        diagnosis = (await api.get(f"/api/diagnoses/{response.json()['diagnosis_id']}", headers=headers)).json()
+        if diagnosis.get("status") != "processing":
+            break
+        await asyncio.sleep(0.02)
+    assert diagnosis["status"] == "ready"
     assert diagnosis["category"] == "masonry"
     assert diagnosis["image_path"] is None
     assert received["image_b64"] is None

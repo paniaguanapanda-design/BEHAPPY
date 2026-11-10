@@ -12,6 +12,7 @@ import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { DifficultyBadge } from "@/src/DifficultyBadge";
 import { localPhotos } from "@/src/localPhotos";
 import { Button, Loading, SectionTitle } from "@/src/ui";
+import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 
 type Action = "repair" | "reposition" | "replace" | "inspect";
 const ACTIONS: string[] = ["repair", "reposition", "replace", "inspect"];
@@ -45,11 +46,34 @@ export default function Diagnosis() {
   const router = useRouter();
   const { t, lang } = useI18n();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const q = useQuery({ queryKey: ["diagnosis", id, lang], queryFn: () => api<any>(`/diagnoses/${id}?lang=${lang}`) });
+  const q = useQuery({
+    queryKey: ["diagnosis", id, lang],
+    queryFn: () => api<any>(`/diagnoses/${id}?lang=${lang}`),
+    // The server analyses in the background: ask again every 2.5 s while it is still "processing".
+    refetchInterval: (query) => ((query.state.data as any)?.status === "processing" ? 2500 : false),
+  });
   const [done, setDone] = useState<Record<number, boolean>>({});
 
   if (q.isLoading) return <Loading />;
   const d = q.data;
+  // Still analysing: same "Analysing with AI…" overlay as before, but without blocking the request.
+  // After 3 minutes we stop waiting and treat it as failed.
+  const stale = d?.status === "processing" && q.dataUpdatedAt - new Date(d.created_at).getTime() > 180_000;
+  if (d?.status === "processing" && !stale)
+    return (
+      <View style={styles.root}>
+        <AnalyzingOverlay visible />
+      </View>
+    );
+  if (d?.status === "failed" || stale)
+    return (
+      <View style={[styles.root, { alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }]} testID="diagnosis-failed">
+        <Text style={[styles.body, { textAlign: "center" }]}>{t("error_generic")}</Text>
+        {d?.error ? <Text style={[styles.body, { textAlign: "center", opacity: 0.7 }]}>{d.error}</Text> : null}
+        <Button title={t("scan_again")} icon="camera" onPress={() => router.replace("/scan")} testID="diagnosis-scan-again" />
+        <Button title={t("back")} variant="ghost" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />
+      </View>
+    );
   if (!d)
     return (
       <View style={[styles.root, { alignItems: "center", justifyContent: "center", gap: 12 }]}>
