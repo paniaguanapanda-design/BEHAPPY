@@ -878,13 +878,6 @@ async def diagnose(body: DiagnoseIn, request: Request):
         if body.note and body.note.strip()
         else ""
     )
-    try:
-        result = normalize_diagnosis(await gemini_json(DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra), b64))
-    except DailyLimitReached:
-        raise HTTPException(503, "Oggi il servizio è molto richiesto: riprova domani. / Hoy hay mucha demanda: inténtalo mañana.")
-    except Exception as e:
-        logger.exception("diagnose failed: %s", e)
-        raise HTTPException(503, "AI analysis failed, please retry")
     image_path = None
     if raw is not None:
         image_path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4().hex}.jpg"
@@ -898,26 +891,54 @@ async def diagnose(body: DiagnoseIn, request: Request):
                 logger.warning("image store failed: %s", e)
 
         asyncio.create_task(_store())  # don't make the user wait for storage
-    doc = {**result, "diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path,
-            "language": body.language, "created_at": iso(now())}
+    # Answer at once with the id; Gemini (15-40 s) runs in the background and the app polls GET /diagnoses/{id}.
+    # Waiting here made proxies (Vercel, Render) cut the request with 502/503.
+    doc = {"diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path, "status": "processing",
+           "language": body.language, "created_at": iso(now())}
     if body.note and body.note.strip():
         doc["user_note"] = body.note.strip()
-    doc.pop("_id", None)
     await db.diagnoses.insert_one(doc)
     doc.pop("_id", None)
-    if body.lat is not None and body.lng is not None:
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_loc": {
-            "lat": round(body.lat, 3), "lng": round(body.lng, 3), "at": iso(now())}}})
-        asyncio.create_task(notify_nearby_diagnosis(doc, body.lat, body.lng))
-        if not prov_code(user.get("zone")):
-            asyncio.create_task(set_user_province(user, body.lat, body.lng, "gps"))
-    return doc
+    prompt = DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra)
+    asyncio.create_task(_run_diagnosis(doc["diagnosis_id"], prompt, b64, user, body.lat, body.lng))
+    return {"diagnosis_id": doc["diagnosis_id"], "status": "processing"}
+
+
+async def _run_diagnosis(diagnosis_id: str, prompt: str, b64: Optional[str], user: dict,
+                         lat: Optional[float], lng: Optional[float]) -> None:
+    """Background part of POST /diagnose: ask Gemini, then mark the diagnosis ready or failed."""
+    try:
+        result = normalize_diagnosis(await gemini_json(prompt, b64))
+    except DailyLimitReached:
+        await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {
+            "status": "failed", "error": "Oggi il servizio è molto richiesto: riprova domani. / Hoy hay mucha demanda: inténtalo mañana."}})
+        return
+    except Exception as e:
+        logger.exception("diagnose failed: %s", e)
+        await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {
+            "status": "failed", "error": "AI analysis failed, please retry"}})
+        return
+    result.pop("_id", None)
+    for k in ("diagnosis_id", "user_id", "image_path", "language", "created_at", "user_note"):
+        result.pop(k, None)
+    await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {**result, "status": "ready"}})
+    if lat is not None and lng is not None:
+        try:
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_loc": {
+                "lat": round(lat, 3), "lng": round(lng, 3), "at": iso(now())}}})
+            doc = await db.diagnoses.find_one({"diagnosis_id": diagnosis_id}, {"_id": 0})
+            await notify_nearby_diagnosis(doc, lat, lng)
+            if not prov_code(user.get("zone")):
+                await set_user_province(user, lat, lng, "gps")
+        except Exception as e:
+            logger.warning("post-diagnosis location tasks failed: %s", e)
 
 
 @api.get("/diagnoses")
 async def list_diagnoses(request: Request):
     user = await current_user(request)
-    return await db.diagnoses.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return await db.diagnoses.find({"user_id": user["user_id"], "status": {"$nin": ["processing", "failed"]}},
+                                   {"_id": 0}).sort("created_at", -1).to_list(50)
 
 
 @api.get("/diagnoses/{diagnosis_id}")
@@ -928,6 +949,8 @@ async def get_diagnosis(diagnosis_id: str, request: Request, lang: Optional[str]
         raise HTTPException(404, "Not found")
     if d["user_id"] != user["user_id"]:
         raise HTTPException(403, "Forbidden")
+    if d.get("status") in ("processing", "failed"):
+        return d  # the app polls until it is ready
     lang = lang if lang in LANG_NAME else d.get("language", "es")
     if lang != d.get("language"):
         cached = (d.get("i18n") or {}).get(lang)

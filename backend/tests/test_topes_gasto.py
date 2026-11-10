@@ -29,7 +29,14 @@ async def test_gemini_cap_blocks_diagnosis_and_warns_admin(api, mail, monkeypatc
     buf = io.BytesIO()
     Image.new("RGB", (10, 10)).save(buf, "JPEG")
     r = await api.post("/api/diagnose", headers=h, json={"image_base64": base64.b64encode(buf.getvalue()).decode()})
-    assert r.status_code == 503 and "domani" in r.json()["detail"]
+    assert r.status_code == 200
+    did = r.json()["diagnosis_id"]
+    for _ in range(50):  # the analysis runs in the background
+        d = (await api.get(f"/api/diagnoses/{did}", headers=h)).json()
+        if d.get("status") != "processing":
+            break
+        await asyncio.sleep(0.02)
+    assert d["status"] == "failed" and "domani" in d["error"]
 
 
 async def test_maps_cap_falls_back_without_spending(api, mail, monkeypatch):

@@ -44,8 +44,7 @@ export function useDiagnose() {
         body: { ...(base64 ? { image_base64: base64 } : {}), ...(description ? { note: description } : {}), language: lang, ...(pos ?? {}) },
       });
       if (uri) localPhotos[d.diagnosis_id] = uri;
-      // show the result straight away in the scanner's language — no extra fetch/translation
-      queryClient.setQueryData(["diagnosis", d.diagnosis_id, lang], { ...d, title: (d as any)[`title_${lang}`] });
+      // The server answers at once with the id and analyses in the background; the diagnosis screen polls it.
       queryClient.invalidateQueries({ queryKey: ["diagnoses"] });
       const target = { pathname: "/diagnosis/[id]" as const, params: { id: d.diagnosis_id } };
       if (replace) router.replace(target);
