@@ -577,7 +577,7 @@ def _reset_hash(user_id: str, code: str) -> str:
 
 def _esc(v: str) -> str:
     import html
-    return _esc(v or "")
+    return html.escape(v or "")
 
 
 class ForgotIn(BaseModel):
