@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +15,7 @@ import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
 import { InstallPrompt } from "@/src/InstallPrompt";
 import { setAfterLogin, takeProIntent } from "@/src/postLogin";
+import { getReferral, setReferral } from "@/src/referral";
 
 const LOGO = require("@/assets/images/logo-house-sun.png");
 // The same photo as the website: a phone scanning a dripping faucet.
@@ -38,7 +39,13 @@ export default function Login() {
   const [gBusy, setGBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [pro, setPro] = useState(false); // came from the specialists page: after signing up, open the profile form
+  // Codigo de quien recomendo la app: viene del link (?ref=) o se escribe a mano
+  const [refCode, setRefCode] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    getReferral().then((r) => r && setRefCode((v) => v || r));
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,7 +64,10 @@ export default function Login() {
     setBusy(true);
     try {
       if (mode === "in") await login(email, password);
-      else await register(name, email, password);
+      else {
+        if (refCode.trim()) await setReferral(refCode);
+        await register(name, email, password);
+      }
     } catch (e: any) {
       toast(e.message || t("error_generic"), "error");
     } finally {
@@ -239,6 +249,19 @@ export default function Login() {
               <Ionicons name={showPw ? "eye-off-outline" : "eye-outline"} size={22} color={colors.muted} />
             </Pressable>
           </View>
+          {mode === "up" && (
+            <TextInput
+              testID="register-ref-input"
+              style={styles.input}
+              placeholder={t("ref_code")}
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={40}
+              value={refCode}
+              onChangeText={setRefCode}
+            />
+          )}
           {mode === "in" && (
             <Pressable testID="forgot-password-link" onPress={() => setMode("forgot")} style={styles.forgot} hitSlop={8}>
               <Text style={styles.forgotText}>{t("forgot_password")}</Text>

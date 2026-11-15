@@ -19,8 +19,11 @@ import { CameraPermissionPrompt } from "@/src/CameraPermissionPrompt";
 import { takeAfterLogin } from "@/src/postLogin";
 import { useTheme } from "@/src/theme";
 import { usePushSetup } from "@/src/push";
+import { captureReferral } from "@/src/referral";
 
 LogBox.ignoreAllLogs(true);
+// Antes de cualquier redireccion (que quita el ?ref= de la URL), guarda el codigo de quien recomendo la app.
+captureReferral();
 
 function Gate() {
   const { user, loading } = useAuth();

@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import { api, setToken, setUnauthorizedHandler } from "@/src/api";
 import { setProMode } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
+import { getReferral } from "@/src/referral";
 
 const TOKEN_KEY = "auth_token";
 // Last signed-in user, so the app opens at once even while the server is waking up.
@@ -105,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
-      await applySession(await api("/auth/register", { body: { name, email, password } }));
+      const ref = await getReferral();
+      await applySession(await api("/auth/register", { body: { name, email, password, ...(ref ? { ref } : {}) } }));
     },
     [applySession],
   );
@@ -127,8 +129,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isSuccessResponse(response)) return; // el usuario cancelo
     const idToken = response.data.idToken;
     if (!idToken) throw new Error("Google no devolvio el token.");
+    const ref = await getReferral();
     await applySession(
-      await api<{ session_token: string; user: User }>("/auth/google", { body: { id_token: idToken } }),
+      await api<{ session_token: string; user: User }>("/auth/google", {
+        body: { id_token: idToken, ...(ref ? { ref } : {}) },
+      }),
     );
   }, [applySession]);
 

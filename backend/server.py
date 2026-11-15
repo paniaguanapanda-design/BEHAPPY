@@ -383,10 +383,26 @@ async def current_user(request: Request) -> dict:
     return user
 
 
+REF_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,39}$")
+
+
+def clean_ref(value: Optional[str]) -> Optional[str]:
+    """Codigo de quien recomendo la app (embajador, cartel con QR...): minusculas, letras/numeros/-/_, 2-40 caracteres."""
+    ref = (value or "").strip().lower()
+    return ref if REF_RE.match(ref) else None
+
+
+def referral_fields(value: Optional[str]) -> dict:
+    """Solo se guarda al crear la cuenta: luego no se puede cambiar (asi nadie cobra dos veces por el mismo usuario)."""
+    ref = clean_ref(value)
+    return {"referido_por": ref, "referido_en": iso(now())} if ref else {}
+
+
 class RegisterIn(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=128)
     name: str = Field(max_length=100)
+    ref: Optional[str] = Field(None, max_length=60)
 
 
 class LoginIn(BaseModel):
@@ -413,7 +429,7 @@ async def register(body: RegisterIn, request: Request):
     user = {"user_id": new_id("user"), "email": email, "name": body.name.strip() or email.split("@")[0],
             "picture": None, "role": "client", "specialist_id": None,
             "password_hash": (await run_in_threadpool(bcrypt.hashpw, body.password.encode(), bcrypt.gensalt())).decode(),
-            "created_at": iso(now())}
+            "created_at": iso(now()), **referral_fields(body.ref)}
     await db.users.insert_one(user)
     user.pop("_id", None)
     return {"session_token": await make_jwt(user["user_id"]), "user": public_user(user)}
@@ -434,6 +450,7 @@ async def login(body: LoginIn, request: Request):
 
 class GoogleLoginIn(BaseModel):
     id_token: str = Field(max_length=4096)
+    ref: Optional[str] = Field(None, max_length=60)
 
 
 @api.post("/auth/google")
@@ -461,7 +478,8 @@ async def google_login(body: GoogleLoginIn, request: Request):
             user["picture"] = info["picture"]
     else:
         user = {"user_id": new_id("user"), "email": email, "name": info.get("name") or email.split("@")[0],
-                "picture": info.get("picture"), "role": "client", "specialist_id": None, "created_at": iso(now())}
+                "picture": info.get("picture"), "role": "client", "specialist_id": None, "created_at": iso(now()),
+                **referral_fields(body.ref)}
         await db.users.insert_one(user)
         user.pop("_id", None)
     try:
@@ -1349,6 +1367,36 @@ async def admin_decide_verification(sid: str, decision: str, x_admin_token: Opti
 async def admin_reports(x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
     return await db.reports.find({"status": "open"}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+@api.get("/admin/referidos")
+async def admin_referidos(desde: Optional[str] = None, hasta: Optional[str] = None,
+                          x_admin_token: Optional[str] = Header(None)):
+    """Por cada codigo: cuantas cuentas nuevas trajo y cuantas estan activas (al menos 1 diagnostico).
+    desde/hasta (AAAA-MM-DD, opcionales) filtran por la fecha de registro."""
+    require_admin(x_admin_token)
+    q: dict = {"referido_por": {"$type": "string"}}
+    rango = {}
+    for key, val, op in (("desde", desde, "$gte"), ("hasta", hasta, "$lt")):
+        if val:
+            try:
+                d = datetime.strptime(val, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except ValueError:
+                raise HTTPException(400, f"{key} debe ser AAAA-MM-DD")
+            rango[op] = iso(d + timedelta(days=1) if key == "hasta" else d)
+    if rango:
+        q["referido_en"] = rango
+    users = await db.users.find(q, {"_id": 0, "user_id": 1, "referido_por": 1}).to_list(100000)
+    ids = [u["user_id"] for u in users]
+    activos = set(await db.diagnoses.distinct("user_id", {"user_id": {"$in": ids}})) if ids else set()
+    por_codigo: dict = {}
+    for u in users:
+        r = por_codigo.setdefault(u["referido_por"], {"codigo": u["referido_por"], "registrados": 0, "activos": 0})
+        r["registrados"] += 1
+        r["activos"] += u["user_id"] in activos
+    filas = sorted(por_codigo.values(), key=lambda r: (-r["activos"], -r["registrados"], r["codigo"]))
+    return {"desde": desde, "hasta": hasta, "codigos": filas,
+            "total_registrados": len(users), "total_activos": len(activos)}
 
 
 @api.post("/admin/reports/{rid}/resolve")
