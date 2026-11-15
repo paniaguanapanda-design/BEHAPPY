@@ -72,3 +72,30 @@ export async function googleWebIdToken(clientId: string, lang: string, cancelLab
     });
   });
 }
+
+/** Draws Google's own "Continue with Google" button inside `el`: one tap opens the account chooser. */
+export async function renderGoogleButton(
+  el: HTMLElement,
+  clientId: string,
+  lang: string,
+  width: number,
+  onToken: (idToken: string) => void,
+): Promise<void> {
+  await loadGis();
+  const google = (window as any).google;
+  google.accounts.id.initialize({
+    client_id: clientId,
+    callback: (resp: { credential?: string }) => resp?.credential && onToken(resp.credential),
+    ux_mode: "popup",
+  });
+  el.innerHTML = "";
+  google.accounts.id.renderButton(el, {
+    theme: "outline",
+    size: "large",
+    shape: "pill",
+    text: "continue_with",
+    logo_alignment: "center",
+    locale: lang,
+    width: Math.max(200, Math.min(400, Math.round(width))),
+  });
+}

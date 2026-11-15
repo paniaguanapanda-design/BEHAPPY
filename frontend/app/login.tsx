@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View, Platform } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -15,6 +15,7 @@ import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { LangToggle } from "@/src/LangToggle";
 import { InstallPrompt } from "@/src/InstallPrompt";
 import { setAfterLogin, takeProIntent } from "@/src/postLogin";
+import { GoogleWebButton } from "@/src/GoogleWebButton";
 import { getReferral, setReferral } from "@/src/referral";
 
 const LOGO = require("@/assets/images/logo-house-sun.png");
@@ -27,7 +28,7 @@ export default function Login() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { t, lang } = useI18n();
-  const { login, register, loginWithGoogle, resetPassword } = useAuth();
+  const { login, register, loginWithGoogle, loginWithGoogleIdToken, resetPassword } = useAuth();
   const toast = useToast();
   const [mode, setMode] = useState<"in" | "up" | "forgot" | "reset">("in");
   const [code, setCode] = useState("");
@@ -191,6 +192,25 @@ export default function Login() {
         ) : (
         <View style={styles.form}>
           <InstallPrompt />
+          {Platform.OS === "web" ? (
+            gBusy ? (
+              <ActivityIndicator color={colors.onSurface} style={{ minHeight: 44 }} />
+            ) : (
+              <GoogleWebButton
+                onToken={async (idToken) => {
+                  setGBusy(true);
+                  try {
+                    await loginWithGoogleIdToken(idToken);
+                  } catch (e: any) {
+                    toast(e.message || t("error_generic"), "error");
+                  } finally {
+                    setGBusy(false);
+                  }
+                }}
+                onError={(e) => toast(e.message || t("error_generic"), "error")}
+              />
+            )
+          ) : (
           <Pressable
             testID="google-login-button"
             onPress={google}
@@ -206,6 +226,7 @@ export default function Login() {
               </>
             )}
           </Pressable>
+          )}
           <View style={styles.orRow}>
             <View style={styles.line} />
             <Text style={styles.or}>{t("or_email")}</Text>
