@@ -140,8 +140,8 @@ export default function Chat() {
             const mine = item.sender_id === user?.user_id;
             return (
               <Pressable onLongPress={() => !mine && setReport({ type: "message", id: item.message_id })} delayLongPress={400} style={[styles.bubble, mine ? styles.mine : styles.theirs]} testID={`message-${item.message_id}`}>
-                <Text style={[styles.msg, mine && { color: colors.onSurfaceInverse }]}>{item.text}</Text>
-                <Text style={[styles.time, mine && { color: colors.onSurfaceInverse }]}>{timeLabel(item.created_at, lang)}</Text>
+                <Text style={[styles.msg, mine && { color: colors.onBrandPrimary }]}>{item.text}</Text>
+                <Text style={[styles.time, mine && { color: colors.onBrandPrimary }]}>{timeLabel(item.created_at, lang)}</Text>
               </Pressable>
             );
           }}
@@ -209,7 +209,7 @@ export default function Chat() {
             multiline
           />
           <Pressable testID="chat-send-button" onPress={send} disabled={sending || !text.trim()} style={[styles.send, (!text.trim() || sending) && { opacity: 0.5 }]}>
-            <Ionicons name="send" size={19} color={colors.onBrandPrimary} />
+            <Ionicons name="send" size={19} color={colors.onSun} />
           </Pressable>
         </View>
         )}
@@ -233,16 +233,16 @@ const useStyles = makeStyles((c) => ({
   header: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8, paddingBottom: 10, backgroundColor: c.surfaceSecondary, borderBottomWidth: 1, borderBottomColor: c.border },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backRound: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center", marginLeft: 4 },
-  dcard: { alignSelf: "flex-start", width: "84%", backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 16, overflow: "hidden", marginBottom: 8 },
-  dimg: { width: "100%", height: 90, backgroundColor: c.surfaceTertiary },
+  dcard: { alignSelf: "flex-start", width: "84%", backgroundColor: c.surfaceSecondary, borderWidth: 2, borderColor: c.sun, borderRadius: 22, overflow: "hidden", marginBottom: 8 },
+  dimg: { width: "100%", height: 130, backgroundColor: c.surfaceTertiary },
   dbody: { padding: 12, gap: 4 },
-  dlabel: { fontSize: 12, color: c.muted },
+  dlabel: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", color: c.brandPrimary },
   dtitle: { fontSize: 16, fontFamily: fonts.display, color: c.onSurface },
-  dnote: { marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: c.surface },
+  dnote: { marginTop: 4, padding: 10, borderRadius: 14, backgroundColor: c.surface },
   dnoteLabel: { fontSize: 12, fontWeight: "700", color: c.onSurfaceTertiary },
   dnoteText: { marginTop: 4, fontSize: 13, lineHeight: 18, color: c.onSurface },
   dmat: { fontSize: 13, color: c.onSurfaceTertiary, lineHeight: 18 },
-  where: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.brandSecondary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
+  where: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.brandSecondary, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
   whereText: { flex: 1, fontSize: 13, fontWeight: "700", color: c.onBrandSecondary },
   review: { marginHorizontal: 16, marginBottom: 10, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 18, padding: 14, alignItems: "center", gap: 8 },
   reviewTitle: { fontSize: 17, fontFamily: fonts.display, color: c.onSurface, textAlign: "center" },
@@ -256,8 +256,8 @@ const useStyles = makeStyles((c) => ({
   qrText: { fontSize: 13, fontWeight: "600", color: c.onBrandSecondary },
   headInfo: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
   headName: { fontSize: 17, fontWeight: "700", color: c.onSurface, flex: 1 },
-  bubble: { maxWidth: "80%", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, gap: 2 },
-  mine: { alignSelf: "flex-end", backgroundColor: c.surfaceInverse, borderBottomRightRadius: 6 },
+  bubble: { maxWidth: "80%", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, gap: 2 },
+  mine: { alignSelf: "flex-end", backgroundColor: c.brandPrimary, borderBottomRightRadius: 6 },
   theirs: { alignSelf: "flex-start", backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderBottomLeftRadius: 6 },
   msg: { fontSize: 15, color: c.onSurface, lineHeight: 21 },
   time: { fontSize: 10, color: c.muted, alignSelf: "flex-end", opacity: 0.8 },
@@ -272,7 +272,7 @@ const useStyles = makeStyles((c) => ({
   lockText: { fontSize: 14, color: c.onSurfaceTertiary, lineHeight: 20 },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 12, paddingTop: 8, backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border },
   input: { flex: 1, minHeight: 44, maxHeight: 120, borderRadius: 22, backgroundColor: c.surfaceTertiary, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: c.onSurface },
-  send: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  send: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.sun, alignItems: "center", justifyContent: "center" },
   quoteBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.brandSecondary, alignItems: "center", justifyContent: "center" },
   sysMsg: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.surfaceTertiary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   sysText: { fontSize: 12, color: c.onSurfaceTertiary, fontWeight: "600" },

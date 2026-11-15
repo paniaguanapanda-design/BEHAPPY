@@ -163,6 +163,7 @@ const useStyles = makeStyles((c) => ({
   btnGhost: { borderWidth: 1, borderColor: c.border },
   btnText: { fontSize: 16, fontWeight: "800" },
   verified: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
