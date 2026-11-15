@@ -23,7 +23,8 @@ def pushes(monkeypatch):
         return "San Salvario"
 
     async def fake_mail(*a):
-        sent.append({"mail": a})
+        if "nuevo especialista" not in str(a[1] if len(a) > 1 else ""):  # the sign-up notice to the owner is not a push
+            sent.append({"mail": a})
         return True
 
     monkeypatch.setattr(server, "send_push", fake_push)
@@ -62,7 +63,7 @@ async def wait_for_pushes(pushes, count):
     assert len(pushes) >= count
 
 
-async def test_wall_only_shows_specialists_of_the_client_province(api, pushes):
+async def test_wall_only_shows_specialists_whose_radius_reaches_the_client(api, pushes):
     h1, s1 = await pro(api, "centro@x.it")
     h2, s2 = await pro(api, "ivrea@x.it")
     h3, s3 = await pro(api, "milano@x.it")
@@ -72,15 +73,15 @@ async def test_wall_only_shows_specialists_of_the_client_province(api, pushes):
     c = await register(api, "cliente@x.it", at=None)
     # sin provincia no sale nadie
     assert (await api.get("/api/specialists?category=plumbing", headers=c)).json() == []
-    # con su ubicacion: su provincia es Torino, salen los de Torino (Ivrea incluido) ordenados por distancia
+    # con su ubicacion: sale quien llega hasta el cliente con su radio (Torino, 8 km); Ivrea (10 km) queda lejos
     r = await api.get(f"/api/specialists?category=plumbing&lat={LINGOTTO[0]}&lng={LINGOTTO[1]}", headers=c)
     ids = [x["specialist_id"] for x in r.json()]
-    assert ids == [s1["specialist_id"], s2["specialist_id"]]
+    assert ids == [s1["specialist_id"]]
     assert 4 <= r.json()[0]["distance_km"] <= 5.5
     assert r.json()[0]["zone"]["province"] == {"code": "TO", "name": "Torino"}
-    # sin posicion se usa la provincia guardada
+    # sin posicion se usa la zona guardada
     r = await api.get("/api/specialists?category=plumbing", headers=c)
-    assert [x["specialist_id"] for x in r.json()] == [s1["specialist_id"], s2["specialist_id"]]
+    assert [x["specialist_id"] for x in r.json()] == [s1["specialist_id"]]
     # elige Milano a mano: solo el de Milano
     assert (await api.put("/api/me/zone", headers=c, json={"lat": MILANO[0], "lng": MILANO[1]})).json()["province"]["code"] == "MI"
     r = await api.get(f"/api/specialists?category=plumbing&lat={LINGOTTO[0]}&lng={LINGOTTO[1]}", headers=c)
@@ -112,13 +113,19 @@ async def test_chat_only_within_the_same_province(api, pushes):
     assert (await api.post("/api/conversations", headers=c2, json={"specialist_id": sz["specialist_id"]})).status_code == 403
 
 
-async def test_zone_outside_italy_is_rejected(api, pushes):
+async def test_zone_outside_italy_works_by_distance(api, pushes):
+    # BeHappy is global: a specialist in Paris is found by a client in Paris, not by one in Turin.
     h, s = await pro(api, "fuori@x.it", zone=None)
     r = await api.put("/api/specialists/me/zone", headers=h, json={"lat": 48.85, "lng": 2.35, "radius_km": 10,
-                                                                    "days": [1], "from": "08:00", "to": "18:00"})
-    assert r.status_code == 422
+                                                                    "days": [1, 2, 3, 4, 5, 6, 7], "from": "00:00", "to": "23:59"})
+    assert r.status_code == 200, r.text
     c = await register(api, "c@x.it", at=None)
-    assert (await api.put("/api/me/zone", headers=c, json={"lat": 48.85, "lng": 2.35})).status_code == 422
+    assert (await api.put("/api/me/zone", headers=c, json={"lat": 48.86, "lng": 2.34})).status_code == 200
+    assert s["specialist_id"] in [x["specialist_id"] for x in (await api.get("/api/specialists", headers=c)).json()]
+    ficha = (await api.get(f"/api/specialists/{s['specialist_id']}", headers=c)).json()
+    assert ficha["same_province"] is True
+    turin = await register(api, "torino@x.it")
+    assert s["specialist_id"] not in [x["specialist_id"] for x in (await api.get("/api/specialists", headers=turin)).json()]
 
 
 async def test_available_now_follows_the_schedule(api, pushes):

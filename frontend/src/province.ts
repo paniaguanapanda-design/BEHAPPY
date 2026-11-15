@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/src/api";
 import { queryClient } from "@/src/query-client";
 
-// BeHappy works across Italy, split by province: clients only see and contact specialists of their own province.
+// BeHappy works in any country: clients see and contact the specialists whose work radius reaches them.
 export type Province = { code: string; name: string };
 export type Place = { name: string; province: Province; lat: number; lng: number };
 
