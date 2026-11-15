@@ -25,6 +25,7 @@ type Ctx = {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithGoogleIdToken: (idToken: string) => Promise<void>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -112,6 +113,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
+  // Web: Google's own button hands us the ID token directly.
+  const loginWithGoogleIdToken = useCallback(
+    async (idToken: string) => {
+      await applySession(await api<{ session_token: string; user: User }>("/auth/google", { body: { id_token: idToken } }));
+    },
+    [applySession],
+  );
+
   const loginWithGoogle = useCallback(async () => {
     if (!GOOGLE_WEB_CLIENT_ID) throw new Error("Google no esta configurado.");
     if (Platform.OS === "web") {
@@ -165,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [remember]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, resetPassword, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, loginWithGoogleIdToken, resetPassword, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
