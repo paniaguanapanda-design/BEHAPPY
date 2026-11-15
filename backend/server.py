@@ -1388,7 +1388,9 @@ async def admin_referidos(desde: Optional[str] = None, hasta: Optional[str] = No
         q["referido_en"] = rango
     users = await db.users.find(q, {"_id": 0, "user_id": 1, "referido_por": 1}).to_list(100000)
     ids = [u["user_id"] for u in users]
-    activos = set(await db.diagnoses.distinct("user_id", {"user_id": {"$in": ids}})) if ids else set()
+    # Solo cuentan diagnosticos terminados (no los que siguen "processing" ni los "failed")
+    activos = set(await db.diagnoses.distinct(
+        "user_id", {"user_id": {"$in": ids}, "status": {"$nin": ["processing", "failed"]}})) if ids else set()
     por_codigo: dict = {}
     for u in users:
         r = por_codigo.setdefault(u["referido_por"], {"codigo": u["referido_por"], "registrados": 0, "activos": 0})

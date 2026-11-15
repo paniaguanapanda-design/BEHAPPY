@@ -68,8 +68,13 @@ async def test_admin_report(api, monkeypatch):
     _, u2 = await signup(api, "m2@example.com", ref="maria")
     _, u3 = await signup(api, "s1@example.com", ref="silvano")
     await signup(api, "x@example.com")
-    for uid in (u1, u1, u3):  # activo = al menos 1 diagnostico (dos diagnosticos cuentan una vez)
-        await server.db.diagnoses.insert_one({"diagnosis_id": server.new_id("diag"), "user_id": uid})
+    for uid, status in ((u1, "ready"), (u1, "ready"), (u3, None)):  # activo = al menos 1 diagnostico terminado
+        doc = {"diagnosis_id": server.new_id("diag"), "user_id": uid}
+        if status:
+            doc["status"] = status
+        await server.db.diagnoses.insert_one(doc)
+    for status in ("processing", "failed"):  # no cuentan
+        await server.db.diagnoses.insert_one({"diagnosis_id": server.new_id("diag"), "user_id": u2, "status": status})
     r = await api.get("/api/admin/referidos", headers=ADMIN)
     assert r.status_code == 200, r.text
     data = r.json()

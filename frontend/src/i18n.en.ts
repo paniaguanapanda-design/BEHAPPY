@@ -57,6 +57,7 @@ export const en = {
   email: "Email", password: "Password", name: "Full name",
   sign_in: "Sign in", sign_up: "Create account", continue_google: "Continue with Google",
   no_account: "No account? Sign up", have_account: "Already have an account? Sign in", or: "or",
+  ref_code: "Code of who recommended us (optional)",
   forgot_password: "Forgot your password?", forgot_title: "Recover password", forgot_text: "Type your account email and we'll send you a 6-digit code.",
   send_code: "Send code", code_sent: "If the email has an account, we've sent you a code. Check your spam folder too.",
   code: "6-digit code", new_password: "New password (at least 6 characters)", change_password: "Change password",
