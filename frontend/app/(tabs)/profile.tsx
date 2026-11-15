@@ -169,6 +169,27 @@ export default function Profile() {
           </View>
         ) : null}
 
+        {isSpec && sp && ((sp.portfolio?.length ?? 0) < 3 || !sp.verified) ? (
+          <View style={styles.boost} testID="profile-boost">
+            <Text style={styles.boostTitle}>{t("boost_title")}</Text>
+            <Text style={styles.boostSub}>{t("boost_sub")}</Text>
+            {(sp.portfolio?.length ?? 0) < 3 ? (
+              <Pressable testID="boost-photos" onPress={() => router.push("/specialist-form")} style={styles.boostRow}>
+                <Ionicons name="images-outline" size={20} color={colors.brandPrimary} />
+                <Text style={styles.boostText}>{t("boost_photos").replace("{n}", String(sp.portfolio?.length ?? 0))}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ) : null}
+            {!sp.verified ? (
+              <Pressable testID="boost-verify" onPress={() => router.push("/specialist-form")} style={styles.boostRow}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={colors.brandPrimary} />
+                <Text style={styles.boostText}>{sp.verification_status === "in_review" ? t("boost_in_review") : t("boost_verify")}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         {isSpec && sp?.membership_active && (
           <View style={{ gap: 10 }}>
             <View style={styles.weekHead}>
@@ -324,6 +345,11 @@ export default function Profile() {
 }
 
 const useStyles = makeStyles((c) => ({
+  boost: { backgroundColor: c.sunSoft, borderRadius: 20, padding: 16, gap: 8, borderWidth: 1, borderColor: c.sun },
+  boostTitle: { fontSize: 17, fontFamily: fonts.displayMedium, color: c.onSurface },
+  boostSub: { fontSize: 13, color: c.onSurfaceTertiary, lineHeight: 18 },
+  boostRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: c.surfaceSecondary, borderRadius: 14, padding: 12, minHeight: 48 },
+  boostText: { flex: 1, fontSize: 14, fontWeight: "700", color: c.onSurface },
   root: { flex: 1, backgroundColor: c.surface },
   header: { paddingHorizontal: 24, paddingBottom: 8, gap: 12 },
   seg: { flexDirection: "row", backgroundColor: c.surfaceTertiary, borderRadius: 12, padding: 3 },
