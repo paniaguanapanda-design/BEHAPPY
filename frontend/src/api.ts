@@ -1,4 +1,5 @@
 import { uploadForm } from "@/src/utils/upload";
+import { shrinkForUpload } from "@/src/compressImage";
 
 // The web app (app.be-happyapp.com) calls the backend through its own domain: Vercel forwards /api/* to the
 // server (see vercel.json), so the browser never makes a cross-origin request.
@@ -43,9 +44,10 @@ export function imageSource(p?: string | null): ImageSrc | undefined {
 }
 
 export async function uploadImage(uri: string, mimeType?: string | null): Promise<string> {
+  const small = await shrinkForUpload(uri);
   const res = await uploadForm(`${API}/upload`, {
     headers: { "X-BeHappy-Client": "app", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    files: { file: { uri, name: "photo.jpg", mimeType: mimeType ?? "image/jpeg" } },
+    files: { file: { uri: small, name: "photo.jpg", mimeType: small === uri ? (mimeType ?? "image/jpeg") : "image/jpeg" } },
   });
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   return (await res.json()).path;

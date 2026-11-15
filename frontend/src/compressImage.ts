@@ -17,3 +17,20 @@ export async function compressToBase64(uri: string, width?: number, height?: num
   if (!res.base64) throw new Error("Image compression failed");
   return res.base64.replace(/^data:image\/\w+;base64,/, "");
 }
+
+/** Shrink a photo before uploading it (profile, past work, ID document): max 1600 px on the longest side, JPEG.
+ *  Phone photos are often 5-10 MB, which made uploads very slow. Falls back to the original if anything fails. */
+export async function shrinkForUpload(uri: string, maxSide = 1600): Promise<string> {
+  try {
+    const original = await ImageManipulator.manipulate(uri).renderAsync();
+    const { width, height } = original;
+    const ctx = ImageManipulator.manipulate(uri);
+    if (width >= height && width > maxSide) ctx.resize({ width: maxSide });
+    else if (height > width && height > maxSide) ctx.resize({ height: maxSide });
+    const img = await ctx.renderAsync();
+    const res = await img.saveAsync({ compress: 0.75, format: SaveFormat.JPEG });
+    return res.uri;
+  } catch {
+    return uri;
+  }
+}
