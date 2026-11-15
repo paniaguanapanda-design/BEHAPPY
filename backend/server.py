@@ -951,7 +951,7 @@ async def _run_diagnosis(diagnosis_id: str, prompt: str, b64: Optional[str], use
                 "lat": round(lat, 3), "lng": round(lng, 3), "at": iso(now())}}})
             doc = await db.diagnoses.find_one({"diagnosis_id": diagnosis_id}, {"_id": 0})
             await notify_nearby_diagnosis(doc, lat, lng)
-            if not prov_code(user.get("zone")):
+            if not zone_point(user.get("zone")):
                 await set_user_province(user, lat, lng, "gps")
         except Exception as e:
             logger.warning("post-diagnosis location tasks failed: %s", e)
@@ -1097,7 +1097,7 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
             # Registrado desde la web: el mes gratis empieza la primera vez que entra en la app
             await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"promo_mes_gratis": "pendiente"}})
     user["specialist_id"] = sid
-    if city and not prov_code((existing or {}).get("zone")):
+    if city and not zone_point((existing or {}).get("zone")):
         # Registro desde la web con su comune: su zona (y su provincia) quedan puestas y ya sale en la app
         zone = await zone_from_city(city)
         if zone:
@@ -1115,21 +1115,20 @@ async def list_specialists(request: Request, category: Optional[str] = None, q: 
     if origin:
         await db.users.update_one({"user_id": user["user_id"]},
                                   {"$set": {"last_loc": {"lat": round(lat, 3), "lng": round(lng, 3), "at": iso(now())}}})
-        if not prov_code(user.get("zone")):
-            await set_user_province(user, lat, lng, "gps")  # primera vez: su provincia sale de su ubicacion
-    # Toda Italia, por provincias: solo salen especialistas de la provincia del cliente. Sin provincia, nadie
-    # (la app le pide la ubicacion o su comune).
-    my_prov = prov_code(user.get("zone"))
-    if not my_prov:
+        if not zone_point(user.get("zone")):
+            await set_user_province(user, lat, lng, "gps")  # primera vez: su zona sale de su ubicacion
+    # En cualquier pais: salen los especialistas en cuyo radio de trabajo esta el cliente. Sin zona, nadie
+    # (la app le pide la ubicacion o su ciudad).
+    here = zone_point(user.get("zone")) or origin
+    if not here:
         return []
     if not origin:
-        z = user["zone"]
-        origin = (z["lat"], z["lng"]) if z.get("lat") is not None else None
+        origin = here
     # Salen los especialistas con foto de perfil que trabajan en la zona del cliente: destacados, disponibles ahora y
     # con membresia primero. Los ocultos por reportes no salen.
     # Solo especialistas con la suscripcion activa (se paga en la web): sin ella no ofrecen el servicio.
     flt = {"avatar": {"$type": "string"}, "hidden": {"$ne": True}, "membership_expires_at": {"$gt": iso(now())},
-           "zone.province.code": my_prov}
+           "zone.lat": {"$ne": None}}
     if category and category != "all":
         flt["categories"] = category
     if q:
@@ -1137,7 +1136,7 @@ async def list_specialists(request: Request, category: Optional[str] = None, q: 
     items = await db.specialists.find(flt, {"_id": 0, "verification_document": 0, "document_number": 0}) \
         .sort([("verified", -1), ("created_at", 1)]).to_list(500)
     hidden = await hidden_user_ids(user["user_id"])
-    out = [await specialist_out(it, origin) for it in items if it["user_id"] not in hidden]
+    out = [await specialist_out(it, origin) for it in items if it["user_id"] not in hidden and in_reach(here, it)]
     if available:
         out = [it for it in out if it["available_now"]]
     # Como mucho 3 destacados por oficio (los que lo compraron antes)
@@ -1182,9 +1181,8 @@ async def get_specialist(sid: str, request: Request):
     await record_view(s, user)
     out = await specialist_out(dict(s))
     out["can_review"] = await can_review(user, s)
-    # De otra provincia: se ve la ficha, pero sin telefono ni WhatsApp (tampoco se le puede escribir)
-    mine = prov_code(user.get("zone"))
-    out["same_province"] = bool(mine) and mine == prov_code(s.get("zone"))
+    # Fuera de su radio de trabajo: se ve la ficha, pero sin telefono ni WhatsApp (tampoco se le puede escribir)
+    out["same_province"] = in_reach(zone_point(user.get("zone")), s)
     if not out["same_province"] and s["user_id"] != user["user_id"] and not await db.conversations.find_one(
             {"client_id": user["user_id"], "specialist_id": sid}, {"_id": 1}):
         out.pop("phone", None)
@@ -1496,11 +1494,11 @@ async def start_conversation(body: ConversationIn, request: Request):
     # Las conversaciones que ya existen se respetan.
     exists = await db.conversations.find_one({"client_id": user["user_id"], "specialist_id": spec["specialist_id"]}, {"_id": 1})
     if not exists and user["user_id"] != spec["user_id"]:
-        mine, theirs = prov_code(user.get("zone")), prov_code(spec.get("zone"))
-        if not mine:
-            raise HTTPException(409, "Elige primero tu provincia")
-        if mine != theirs:
-            raise HTTPException(403, "Este especialista trabaja en otra provincia")
+        here = zone_point(user.get("zone"))
+        if not here:
+            raise HTTPException(409, "Elige primero tu zona")
+        if not in_reach(here, spec):
+            raise HTTPException(403, "Este especialista no trabaja en tu zona")
     conv = await get_or_create_conversation(user, spec)
     if body.diagnosis_id:
         d = await db.diagnoses.find_one({"diagnosis_id": body.diagnosis_id, "user_id": user["user_id"]}, {"_id": 0})
@@ -1669,8 +1667,7 @@ def marketplace_request_matches(spec: dict, req: dict) -> tuple[bool, float]:
     if req.get("status") != "open" or req.get("category") not in (spec.get("categories") or []):
         return False, 0
     request_zone = req.get("zone") or {}
-    spec_province = prov_code(spec.get("zone"))
-    if not spec_province or spec_province != prov_code(request_zone):
+    if not zone_point(spec.get("zone")):
         return False, 0
     point = request_zone.get("point") or {}
     coords = point.get("coordinates") or []
@@ -1726,7 +1723,7 @@ async def publish_marketplace_request(body: MarketplaceRequestIn, request: Reque
     if len(body.photos) > 4 or len(set(body.photos)) != len(body.photos):
         raise HTTPException(400, "Add at most 4 unique photos")
     zone = user.get("zone") or {}
-    if not zone.get("province") or zone.get("lat") is None or zone.get("lng") is None:
+    if zone.get("lat") is None or zone.get("lng") is None:
         raise HTTPException(409, "Elige primero tu ciudad para publicar una solicitud")
     rate_limit(f"board-request:{user['user_id']}", 5, 3600)
     for path in body.photos:
@@ -1743,7 +1740,7 @@ async def publish_marketplace_request(body: MarketplaceRequestIn, request: Reque
         "category": body.category,
         "photos": body.photos,
         "city": city,
-        "zone": {"province": zone["province"], "point": {
+        "zone": {"province": zone.get("province") or {}, "point": {
             "type": "Point", "coordinates": [zone["lng"], zone["lat"]]}},
         "status": "open",
         "created_at": iso(now()),
@@ -1764,8 +1761,7 @@ async def list_marketplace_requests(request: Request):
         if not spec or spec.get("hidden") or not membership_active(spec):
             return []
         requests = await db.service_requests.find({"broadcast": True, "status": "open",
-                                                   "category": {"$in": spec.get("categories") or []},
-                                                   "zone.province.code": prov_code(spec.get("zone"))},
+                                                   "category": {"$in": spec.get("categories") or []}},
                                                   {"_id": 0}).sort("created_at", -1).to_list(200)
         out = []
         for req in requests:
@@ -2789,9 +2785,16 @@ async def _nominatim(path: str, params: dict) -> Optional[object]:
 
 
 def province_from_address(a: dict) -> Optional[dict]:
-    """De la direccion de Nominatim a {"code": "TO", "name": "Torino"}. Fuera de Italia: None."""
-    if (a.get("country_code") or "it") != "it":
-        return None
+    """De la direccion de Nominatim a un area legible: en Italia {"code": "TO", "name": "Torino"}; en otros paises
+    {"code": "ES-M", "name": "Madrid"} (region/condado). Solo sirve para mostrar la zona: quien llega a quien se decide
+    por distancia (radio del especialista), en cualquier pais."""
+    cc = (a.get("country_code") or "it").lower()
+    if cc != "it":
+        name = a.get("county") or a.get("state_district") or a.get("state") or a.get("city") or a.get("town") or ""
+        iso_code = a.get("ISO3166-2-lvl6") or a.get("ISO3166-2-lvl4") or ""
+        if not name and not iso_code:
+            return {"code": cc.upper(), "name": a.get("country") or cc.upper()}
+        return {"code": iso_code.upper() or f"{cc.upper()}-{name.upper()}", "name": name or iso_code}
     iso_code = a.get("ISO3166-2-lvl6") or ""
     code = iso_code.split("-", 1)[1].upper() if iso_code.upper().startswith("IT-") else ""
     name = a.get("county") or a.get("province") or ""
@@ -2820,13 +2823,13 @@ async def province_at(lat: float, lng: float) -> Optional[dict]:
 
 
 async def place_search(q: str) -> list:
-    """Busca un comune italiano por nombre y devuelve su provincia (para quien no da la ubicacion)."""
+    """Busca una ciudad por nombre en cualquier pais y devuelve su punto y su area (para quien no da la ubicacion)."""
     q = " ".join(q.split())[:80]
     key = f"q:{q.lower()}"
     hit = await db.geo_cache.find_one({"_id": key})
     if hit:
         return hit.get("results") or []
-    data = await _nominatim("search", {"q": q, "countrycodes": "it", "featureType": "settlement", "limit": 8})
+    data = await _nominatim("search", {"q": q, "featureType": "settlement", "limit": 8, "addressdetails": 1})
     if not isinstance(data, list):
         return []
     out, seen = [], set()
@@ -2860,12 +2863,26 @@ def prov_code(doc: Optional[dict]) -> Optional[str]:
     return ((doc or {}).get("province") or {}).get("code")
 
 
+def zone_point(doc: Optional[dict]) -> Optional[tuple]:
+    """Punto (lat, lng) de una zona de usuario o especialista, o None si aun no la eligio."""
+    z = doc or {}
+    return (z["lat"], z["lng"]) if z.get("lat") is not None and z.get("lng") is not None else None
+
+
+def in_reach(point: Optional[tuple], spec: dict) -> bool:
+    """El cliente (point) esta dentro del radio de trabajo del especialista. Vale en cualquier pais."""
+    if not point or not zone_point(spec.get("zone")):
+        return False
+    center, radius = spec_zone(spec)
+    return km_between(point, center) <= radius
+
+
 async def set_user_province(user: dict, lat: float, lng: float, source: str) -> Optional[dict]:
-    prov = await province_at(lat, lng)
-    if prov:
-        zone = {"province": prov, "lat": round(lat, 3), "lng": round(lng, 3), "source": source, "at": iso(now())}
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"zone": zone}})
-        user["zone"] = zone
+    """Guarda la zona del usuario (su punto, en cualquier pais) y el nombre de su area para mostrarla."""
+    prov = await province_at(lat, lng) or {"code": "", "name": ""}
+    zone = {"province": prov, "lat": round(lat, 3), "lng": round(lng, 3), "source": source, "at": iso(now())}
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"zone": zone}})
+    user["zone"] = zone
     return prov
 
 
@@ -2887,8 +2904,6 @@ async def put_my_zone(body: MyZoneIn, request: Request):
     user = await current_user(request)
     rate_limit(f"zone:{user['user_id']}", 10, 60)
     prov = await set_user_province(user, body.lat, body.lng, "manual")
-    if not prov:
-        raise HTTPException(422, "No encontramos la provincia de ese punto: BeHappy solo funciona en Italia")
     return {"province": prov}
 
 
@@ -2907,13 +2922,10 @@ async def notify_nearby_diagnosis(diag: dict, lat: float, lng: float) -> None:
         cat = diag.get("category")
         if cat not in CATEGORIES:
             return
-        prov = await province_at(lat, lng)
-        if not prov:
-            return
         place = None
         day = now().astimezone(ROME).strftime("%Y-%m-%d")
         async for s in db.specialists.find({"categories": cat, "user_id": {"$ne": diag["user_id"]},
-                                            "zone.province.code": prov["code"],
+                                            "zone.lat": {"$ne": None},
                                             "membership_expires_at": {"$gt": iso(now())}, "hidden": {"$ne": True}},
                                            {"_id": 0}):
             alerts = s.get("alerts") or {}
@@ -3050,7 +3062,7 @@ async def my_settings(request: Request, lang: str = "it"):
     center, radius = spec_zone(s)
     alerts = s.get("alerts") or {}
     return {"zone": {"lat": center[0], "lng": center[1], "radius_km": radius, "label": (s.get("zone") or {}).get("label"),
-                     "province": (s.get("zone") or {}).get("province"), "set": bool(prov_code(s.get("zone")))},
+                     "province": (s.get("zone") or {}).get("province"), "set": bool(zone_point(s.get("zone")))},
             "schedule": s.get("schedule") or {"days": [1, 2, 3, 4, 5, 6], "from": "08:00", "to": "19:00"},
             "schedule_set": bool(s.get("schedule")), "urgent": bool(s.get("urgent")),
             "alerts": {"enabled": alerts.get("enabled", True), "categories": alerts.get("categories") or s.get("categories") or []},
@@ -3068,9 +3080,7 @@ async def save_zone(body: ZoneIn, request: Request):
         raise HTTPException(400, "Invalid schedule")
     old = s.get("zone") or {}
     moved = old.get("lat") != body.lat or old.get("lng") != body.lng or not old.get("province")
-    province = await province_at(body.lat, body.lng) if moved else old["province"]
-    if not province:
-        raise HTTPException(422, "No encontramos la provincia de ese punto: elige un punto en Italia")
+    province = (await province_at(body.lat, body.lng) or {"code": "", "name": ""}) if moved else old["province"]
     label = await reverse_place(body.lat, body.lng) if moved else old.get("label")
     await db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {
         "zone": {"lat": body.lat, "lng": body.lng, "radius_km": body.radius_km, "label": label, "province": province},

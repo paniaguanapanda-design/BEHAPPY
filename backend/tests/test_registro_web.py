@@ -52,18 +52,22 @@ async def test_web_signup_free_month_starts_in_app(api):
     assert (await api.get("/api/membership/me", headers=h)).json()["expires_at"] == m["expires_at"]
 
 
-async def test_app_signup_gets_no_web_promo(api):
+async def test_app_signup_gets_welcome_month_not_web_promo(api):
     h = await register(api, "app@example.com")
     await make_profile(api, {**h, **APP})
     await api.get("/api/auth/me", headers={**h, **APP})
-    assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
+    m = (await api.get("/api/membership/me", headers=h)).json()
+    assert m["active"] and m["source"] == "bienvenida" and days_left(m["expires_at"]) <= 30
 
 
-async def test_spoofed_web_header_cannot_grant_free_month(api):
+async def test_spoofed_web_header_cannot_grant_web_promo(api):
+    # A forged "web" header gives no web promo: only the normal one-time welcome month, never more.
     h = await register(api, "spoofed-web@example.com")
     await make_profile(api, {**h, **SPOOFED_WEB})
     await api.get("/api/auth/me", headers={**h, **APP})
-    assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False
+    await api.get("/api/auth/me", headers={**h, **APP})
+    m = (await api.get("/api/membership/me", headers=h)).json()
+    assert m["source"] == "bienvenida" and days_left(m["expires_at"]) <= 30
 
 
 async def test_list_only_members_with_photo(api):

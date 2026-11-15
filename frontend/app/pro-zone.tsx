@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, PanResponder, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Modal, PanResponder, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -54,6 +54,26 @@ export default function ProZone() {
   const urgent = edits.urgent ?? q.data?.urgent ?? false;
   const [picker, setPicker] = useState<null | "from" | "to">(null);
   const [busy, setBusy] = useState(false);
+  const [cityQ, setCityQ] = useState("");
+  const [cityBusy, setCityBusy] = useState(false);
+  const [cityLabel, setCityLabel] = useState<string | null>(null);
+  // Any country: type a city to put the centre of the work area there (on the web there is no map to drag).
+  const findCity = async () => {
+    if (cityQ.trim().length < 2) return;
+    setCityBusy(true);
+    try {
+      const res = await api<{ name: string; lat: number; lng: number; province?: { name?: string } }[]>(
+        `/places/search?q=${encodeURIComponent(cityQ.trim())}`,
+      );
+      if (!res.length) return toast(t("prov_no_results"), "error");
+      setEdits((e) => ({ ...e, center: { lat: res[0].lat, lng: res[0].lng } }));
+      setCityLabel([res[0].name, res[0].province?.name].filter(Boolean).join(" · "));
+    } catch (e: any) {
+      toast(e?.message || t("error_generic"), "error");
+    } finally {
+      setCityBusy(false);
+    }
+  };
 
   useEffect(() => {
     markSeen("pro_zone");
@@ -105,7 +125,7 @@ export default function ProZone() {
                 radius={radius * 1000}
                 strokeColor={colors.brandPrimary}
                 strokeWidth={2}
-                fillColor="rgba(255,107,0,0.18)"
+                fillColor="rgba(255,210,63,0.22)"
               />
             </Maps.default>
           ) : (
@@ -118,6 +138,22 @@ export default function ProZone() {
           </View>
         </View>
         {Maps ? <Text style={styles.hint}>{t("zone_move_map")}</Text> : null}
+        <View style={styles.citySearch}>
+          <TextInput
+            testID="zone-city-input"
+            style={styles.cityInput}
+            placeholder={t("prov_city_ph")}
+            placeholderTextColor={colors.muted}
+            value={cityQ}
+            onChangeText={setCityQ}
+            onSubmitEditing={findCity}
+            returnKeyType="search"
+          />
+          <Pressable testID="zone-city-search" accessibilityLabel={t("prov_search")} onPress={findCity} style={styles.cityBtn} disabled={cityBusy}>
+            {cityBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Ionicons name="search" size={20} color={colors.onBrandPrimary} />}
+          </Pressable>
+        </View>
+        {cityLabel ? <Text style={styles.hint}>{t("prov_of").replace("{p}", cityLabel)}</Text> : null}
 
         <View style={styles.card} testID="zone-province">
           {q.data?.zone?.province ? (
@@ -262,6 +298,9 @@ function Slider({ value, onChange }: { value: number; onChange: (v: number) => v
 const StyleSheetAbs = { position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0 };
 
 const useStyles = makeStyles((c) => ({
+  citySearch: { flexDirection: "row", gap: 8, marginTop: 10 },
+  cityInput: { flex: 1, minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, paddingHorizontal: 14, fontSize: 15, color: c.onSurface },
+  cityBtn: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
   root: { flex: 1, backgroundColor: c.surface },
   top: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 4 },
   back: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
