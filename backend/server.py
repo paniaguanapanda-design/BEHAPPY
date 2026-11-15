@@ -554,7 +554,7 @@ def _reset_hash(user_id: str, code: str) -> str:
 
 def _esc(v: str) -> str:
     import html
-    return html.escape(v or "")
+    return _esc(v or "")
 
 
 class ForgotIn(BaseModel):
@@ -1063,6 +1063,13 @@ async def upsert_specialist(body: SpecialistIn, request: Request):
                                          "portfolio": [], "verified": False, "verification_status": "none",
                                          "rating_avg": 0.0, "reviews_count": 0, "created_at": iso(now())})
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "specialist", "specialist_id": sid}})
+        # Tell the owner every time a new specialist signs up.
+        _n, _c = _esc(str(data.get("name") or "")), _esc(", ".join(data.get("categories") or []))
+        asyncio.create_task(send_email(
+            os.environ.get("ADMIN_EMAIL", "info@be-happyapp.com"), f"Be Happy: nuevo especialista {data.get('name') or ''}",
+            f"Nuevo especialista inscrito: {data.get('name')} ({', '.join(data.get('categories') or [])}). "
+            f"Correo: {user.get('email')}. Id: {sid}.",
+            f"<p>Nuevo especialista inscrito: <b>{_n}</b> ({_c}).</p><p>Correo: {_esc(str(user.get('email') or ''))}<br>Id: {sid}</p>"))
         if client_kind(request) == "web" and PROMO_WEB and not user.get("promo_mes_gratis"):
             # Registrado desde la web: el mes gratis empieza la primera vez que entra en la app
             await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"promo_mes_gratis": "pendiente"}})
@@ -3642,6 +3649,10 @@ async def startup():
 app.include_router(api)
 
 _cors = [o.strip() for o in os.environ.get("CORS_ORIGINS", "https://www.be-happyapp.com").split(",") if o.strip()]
+# The installable web app calls the server directly (through Cloudflare), so each visitor keeps their own IP for the
+# per-IP limits; going through the Vercel proxy would put every web user behind the same address.
+if "https://app.be-happyapp.com" not in _cors:
+    _cors.append("https://app.be-happyapp.com")
 app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"])
 
 
