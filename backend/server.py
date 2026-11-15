@@ -2003,6 +2003,7 @@ async def start_web_promo(user: dict, request: Request) -> None:
         claimed = await db.users.find_one_and_update({"user_id": user["user_id"], "promo_mes_gratis": "pendiente"},
                                                      {"$set": {"promo_mes_gratis": "aplicada", "promo_aplicada_en": iso(now())}})
         if not claimed:
+            await grant_welcome_month(user)
             return
         current = await db.memberships.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
         base = now()
@@ -2013,6 +2014,21 @@ async def start_web_promo(user: dict, request: Request) -> None:
         logger.info("Mes gratis de registro web aplicado a %s", user["user_id"])
     except Exception as e:
         logger.warning("mes gratis web no aplicado a %s: %s", user.get("user_id"), e)
+
+
+async def grant_welcome_month(user: dict) -> None:
+    """Every new specialist gets one free month, also those who sign up straight from the app (before, only web
+    sign-ups and pre-registered emails did). Once per user; skipped if they ever had a membership (paid, pre-registro
+    or web promo). Existing specialists without one get it the next time they open the app."""
+    if not PROMO_WEB or await db.memberships.find_one({"user_id": user["user_id"]}, {"_id": 1}):
+        return
+    claimed = await db.users.find_one_and_update(
+        {"user_id": user["user_id"], "promo_mes_gratis": {"$exists": False}},
+        {"$set": {"promo_mes_gratis": "aplicada", "promo_aplicada_en": iso(now()), "promo_origen": "bienvenida"}})
+    if not claimed:
+        return
+    await activate_membership(user["user_id"], "monthly", "bienvenida", now() + timedelta(days=30))
+    logger.info("Mes gratis de bienvenida aplicado a %s", user["user_id"])
 
 
 # ---------------- Pre-registro desde la web ----------------

@@ -172,3 +172,16 @@ async def test_free_month_extends_active_membership(api):
     await make_profile(api, h)
     m = (await api.get("/api/membership/me", headers=h)).json()
     assert 39.9 < days_left(m["expires_at"]) <= 40 and m["plan"] == "yearly"
+
+
+async def test_app_signup_gets_welcome_month_once(api):
+    h = await register(api, "fromapp@example.com")
+    h = {**h, "X-BeHappy-Client": "app"}
+    spec = await make_profile(api, h)
+    assert spec["membership_active"] is True
+    uid = (await api.get("/api/auth/me", headers=h)).json()["user_id"]
+    m = await server.db.memberships.find_one({"user_id": uid})
+    assert m["source"] == "bienvenida" and 29 <= days_left(m["expires_at"]) <= 30.1
+    first = m["expires_at"]
+    await api.get("/api/auth/me", headers=h)  # logging in again does not add another month
+    assert (await server.db.memberships.find_one({"user_id": uid}))["expires_at"] == first
