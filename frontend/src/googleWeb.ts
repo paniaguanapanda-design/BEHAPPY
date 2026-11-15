@@ -60,6 +60,10 @@ export async function googleWebIdToken(clientId: string, lang: string, cancelLab
       client_id: clientId,
       callback: (resp: { credential?: string }) => finish(resp?.credential ?? null),
       ux_mode: "popup",
+    // Chrome's built-in account chooser (FedCM): no separate pop-up window, which stays blank in installed apps.
+    use_fedcm_for_button: true,
+    use_fedcm_for_prompt: true,
+    itp_support: true,
     });
     document.body.appendChild(overlay);
     google.accounts.id.renderButton(slot, {
@@ -87,6 +91,10 @@ export async function renderGoogleButton(
     client_id: clientId,
     callback: (resp: { credential?: string }) => resp?.credential && onToken(resp.credential),
     ux_mode: "popup",
+    // Chrome's built-in account chooser (FedCM): no separate pop-up window, which stays blank in installed apps.
+    use_fedcm_for_button: true,
+    use_fedcm_for_prompt: true,
+    itp_support: true,
   });
   el.innerHTML = "";
   google.accounts.id.renderButton(el, {
@@ -98,4 +106,8 @@ export async function renderGoogleButton(
     locale: lang,
     width: Math.max(200, Math.min(400, Math.round(width))),
   });
+  // Also offer the account straight away ("Continue as …") where the browser allows it.
+  try {
+    google.accounts.id.prompt();
+  } catch {}
 }
