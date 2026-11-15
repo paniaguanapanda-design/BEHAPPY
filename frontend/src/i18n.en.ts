@@ -1,5 +1,6 @@
 // English texts. Same keys as the Spanish dictionary in i18n.tsx.
 export const en = {
+  boost_title: "Get more clients", boost_sub: "Clients choose profiles with work photos and verification first.", boost_photos: "Post photos of your work ({n}/3)", boost_verify: "Verify your profile with your ID", boost_in_review: "Verification under review",
   profile_active: "Profile active", profile_active_until: "Until", profile_inactive: "Profile not active",
   new_badge: "NEW", this_week: "This week", details: "Details", stat_views: "profile views", stat_clients: "clients wrote to you", stat_response: "response time",
   available_now: "Available now", available_now_plural: "Available now", out_of_hours: "Out of hours", edit_profile_short: "Edit profile",

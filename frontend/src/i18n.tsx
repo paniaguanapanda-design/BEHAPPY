@@ -5,6 +5,7 @@ import { storage } from "@/src/utils/storage";
 export type Lang = "es" | "it" | "en";
 
 const es = {
+  boost_title: "Consigue más clientes", boost_sub: "Los clientes eligen antes a los perfiles con fotos de trabajos y verificados.", boost_photos: "Publica fotos de tus trabajos ({n}/3)", boost_verify: "Verifica tu perfil con tu documento", boost_in_review: "Verificación en revisión",
   profile_active: "Perfil activo", profile_active_until: "Hasta el", profile_inactive: "Perfil no activo",
   new_badge: "NUEVO", this_week: "Esta semana", details: "Detalles", stat_views: "visitas al perfil", stat_clients: "clientes te escribieron", stat_response: "tiempo de respuesta",
   available_now: "Disponible ahora", available_now_plural: "Disponibles ahora", out_of_hours: "Fuera de horario", edit_profile_short: "Editar perfil",
@@ -171,6 +172,7 @@ const es = {
 };
 
 const it: typeof es = {
+  boost_title: "Ottieni più clienti", boost_sub: "I clienti scelgono prima i profili con foto dei lavori e verificati.", boost_photos: "Pubblica le foto dei tuoi lavori ({n}/3)", boost_verify: "Verifica il profilo con il tuo documento", boost_in_review: "Verifica in revisione",
   profile_active: "Profilo attivo", profile_active_until: "Fino al", profile_inactive: "Profilo non attivo",
   new_badge: "NUOVO", this_week: "Questa settimana", details: "Dettagli", stat_views: "visite al profilo", stat_clients: "clienti ti hanno scritto", stat_response: "tempo di risposta",
   available_now: "Disponibile ora", available_now_plural: "Disponibili ora", out_of_hours: "Fuori orario", edit_profile_short: "Modifica profilo",
