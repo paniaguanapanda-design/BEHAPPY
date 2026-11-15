@@ -285,7 +285,8 @@ async def store_bytes(user_id: str, data: bytes, content_type: str, ext: str) ->
 import time as _time
 from collections import defaultdict, deque
 
-_hits = defaultdict(deque)
+_hits: dict = {}  # key -> deque of hit times, oldest-used first
+_HITS_MAX = 50000
 
 
 def _valid_ip(v: Optional[str]) -> Optional[str]:
@@ -320,9 +321,13 @@ def client_ip(request: Request) -> str:
 def rate_limit(key: str, limit: int, window_s: int) -> None:
     """Permite como maximo `limit` usos de `key` cada `window_s` segundos."""
     t = _time.monotonic()
-    if len(_hits) > 20000:
-        _hits.clear()
-    q = _hits[key]
+    # Forget only the least recently used keys when there are too many. Clearing everything (as before) let
+    # anyone wipe every limit, login ones included, just by sending requests with lots of different emails.
+    if len(_hits) > _HITS_MAX:
+        for k in list(_hits)[: len(_hits) - _HITS_MAX + 1000]:
+            _hits.pop(k, None)
+    q = _hits.pop(key, None) or deque()
+    _hits[key] = q  # move to the end: most recently used
     while q and q[0] < t - window_s:
         q.popleft()
     if len(q) >= limit:
