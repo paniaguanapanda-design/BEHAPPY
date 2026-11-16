@@ -8,6 +8,7 @@ import { useFonts } from "expo-font";
 import { Fredoka_600SemiBold, Fredoka_700Bold } from "@expo-google-fonts/fredoka";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { Analytics } from "@vercel/analytics/react";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
@@ -89,6 +90,7 @@ export default function RootLayout() {
                 <AuthProvider>
                   <ThemedStatusBar />
                   <Gate />
+                  {Platform.OS === "web" && <Analytics />}
                 </AuthProvider>
               </ToastProvider>
             </I18nProvider>
