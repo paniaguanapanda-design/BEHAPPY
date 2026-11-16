@@ -58,7 +58,7 @@ LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_THINKING_BUDGET = int(os.environ.get("GEMINI_THINKING_BUDGET", "256"))
-GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "")  # optional fixed fallback
 _gemini_client = None
 
 
@@ -113,10 +113,12 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
     contents.append(prompt)
     model = _working_model["name"] or GEMINI_MODEL
     try:
-        return await _gemini_call(model, contents)
+        # Only one quick retry: when the main model is saturated it is faster to move to a lighter one.
+        return await _gemini_call(model, contents, attempts=2)
     except Exception as e:
-        # Google retires models (especially previews): try the fallback, then whatever "flash" model the key can
-        # use now, and remember the one that works so the next calls go straight to it.
+        busy = _gemini_busy(e)
+        # Saturated (503/429): try the lighter "lite" models first, they are rarely busy. Retired (404): any flash
+        # model the key can use now. A retired model is replaced for good; a busy one only for this request.
         logger.warning("Gemini %s failed (%s); looking for another model", model, e)
         last: Exception = e
         try:
@@ -124,15 +126,20 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
         except Exception as le:
             logger.warning("Gemini ListModels failed: %s", le)
             available = []
+        if busy:
+            available = [m for m in available if "lite" in m] + [m for m in available if "lite" not in m]
         tried = {model}
-        for candidate in [GEMINI_FALLBACK_MODEL, *available][:4]:
+        for candidate in [c for c in [GEMINI_FALLBACK_MODEL, *available] if c][:4]:
             if candidate in tried:
                 continue
             tried.add(candidate)
             try:
-                result = await _gemini_call(candidate, contents)
-                _working_model["name"] = candidate
-                logger.warning("Gemini: now using %s (set GEMINI_MODEL in Render to make it permanent)", candidate)
+                result = await _gemini_call(candidate, contents, attempts=1 if busy else 3)
+                if not busy:
+                    _working_model["name"] = candidate
+                    logger.warning("Gemini: now using %s (set GEMINI_MODEL in Render to make it permanent)", candidate)
+                else:
+                    logger.warning("Gemini: %s busy, answered with %s", model, candidate)
                 return result
             except Exception as ce:
                 logger.warning("Gemini %s failed too: %s", candidate, ce)
@@ -143,36 +150,41 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
 _working_model: dict = {"name": None}
 
 
-async def _gemini_call(model: str, contents: list) -> dict:
+def _gemini_busy(e: Exception) -> bool:
+    return any(x in str(e) for x in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"))
+
+
+async def _gemini_call(model: str, contents: list, attempts: int = 3) -> dict:
     cfg = dict(system_instruction="You output valid JSON only, no markdown.", response_mime_type="application/json")
-    if model.startswith("gemini-3"):
+    if "lite" in model:
+        pass  # lite models: default settings (fast)
+    elif model.startswith("gemini-3"):
         cfg["thinking_config"] = types.ThinkingConfig(thinking_level="low")
     elif model.startswith("gemini-2.5"):
         # 2.5 models think without limit by default, which makes a photo take much longer: keep it short.
         cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=GEMINI_THINKING_BUDGET)
     # "High demand" (503) and rate limits (429) are usually over in seconds: wait a little and try again.
-    for attempt in range(3):
+    for attempt in range(attempts):
         try:
             response = await get_gemini().aio.models.generate_content(
                 model=model, contents=contents, config=types.GenerateContentConfig(**cfg)
             )
             return parse_json(response.text or "")
         except Exception as e:
-            busy = any(x in str(e) for x in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"))
-            if not busy or attempt == 2:
+            if not _gemini_busy(e) or attempt == attempts - 1:
                 raise
             await asyncio.sleep(1.5 * (attempt + 1))
 
 
 def _available_flash_models() -> list:
-    """Text "flash" models this API key can call now, newest stable first."""
+    """Text "flash" models (also "lite") this API key can call now, newest stable first."""
     names = []
     for m in get_gemini().models.list():
         name = (m.name or "").removeprefix("models/")
         actions = getattr(m, "supported_actions", None) or []
         if "flash" not in name or (actions and "generateContent" not in actions):
             continue
-        if any(x in name for x in ("tts", "image", "audio", "live", "embedding", "lite", "thinking")):
+        if any(x in name for x in ("tts", "image", "audio", "live", "embedding", "thinking")):
             continue
         names.append(name)
 
