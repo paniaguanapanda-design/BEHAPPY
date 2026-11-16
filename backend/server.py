@@ -195,6 +195,35 @@ def _available_flash_models() -> list:
     return sorted(names, key=rank, reverse=True)
 
 
+_ai_check_cache: dict = {"at": 0.0, "out": None}
+
+
+@api.get("/health/ai")
+async def health_ai():
+    """Public, cached check of the AI: which Gemini models answer right now (no user data, no keys).
+    At most one real check per 2 minutes, with a tiny text prompt."""
+    t = _time.monotonic()
+    if _ai_check_cache["out"] and t - _ai_check_cache["at"] < 120:
+        return _ai_check_cache["out"]
+    _ai_check_cache["at"] = t
+    results = {}
+    try:
+        available = await run_in_threadpool(_available_flash_models)
+    except Exception as e:
+        available = []
+        results["list_models"] = str(e)[:160]
+    for m in [GEMINI_MODEL] + [x for x in available if x != GEMINI_MODEL][:3]:
+        try:
+            await _gemini_call(m, ['Return {"ok": true}'], attempts=1)
+            results[m] = "ok"
+        except Exception as e:
+            results[m] = str(e)[:160]
+    out = {"main_model": GEMINI_MODEL, "working_model": _working_model["name"], "available": available[:8],
+           "results": results, "checked_at": iso(now())}
+    _ai_check_cache["out"] = out
+    return out
+
+
 async def caption_both(caption: str) -> dict:
     caption = caption.strip()
     try:
