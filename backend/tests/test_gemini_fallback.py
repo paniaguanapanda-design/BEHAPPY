@@ -31,6 +31,7 @@ def fake_gemini(monkeypatch):
     monkeypatch.setattr(server, "GEMINI_MODEL", "gemini-3.8-flash")
     monkeypatch.setattr(server, "GEMINI_FALLBACK_MODEL", "")
     monkeypatch.setitem(server._working_model, "name", None)
+    monkeypatch.setitem(server._busy_model, "until", 0.0)
 
     async def no_sleep(_):
         return None
@@ -49,3 +50,10 @@ async def test_busy_main_model_falls_back_to_lite(fake_gemini):
     assert out == {"ok": "gemini-3.8-flash-lite"}
     assert fake_gemini.calls == ["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.8-flash-lite"]
     assert server._working_model["name"] is None  # busy is temporary: the next scan tries the main model again
+
+
+async def test_next_scan_goes_straight_to_the_model_that_answered(fake_gemini):
+    await server.gemini_json("uno")
+    fake_gemini.calls.clear()
+    assert await server.gemini_json("dos") == {"ok": "gemini-3.8-flash-lite"}
+    assert fake_gemini.calls == ["gemini-3.8-flash-lite"]  # no waiting on the saturated model
