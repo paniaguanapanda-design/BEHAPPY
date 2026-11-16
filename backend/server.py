@@ -56,7 +56,10 @@ SUBTRADES = {"masonry": ["muratura", "piastrellista", "pintura", "suelos", "teja
 LANG_NAME = {"es": "Spanish", "it": "Italian", "en": "English"}
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+# Free-tier key: the full "flash" models are often saturated (503), the lite ones answer. With paid Gemini,
+# set GEMINI_MODEL=gemini-3.8-flash in Render for more detailed diagnoses.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_CALL_TIMEOUT = float(os.environ.get("GEMINI_CALL_TIMEOUT", "35"))
 GEMINI_THINKING_BUDGET = int(os.environ.get("GEMINI_THINKING_BUDGET", "256"))
 GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "")  # optional fixed fallback
 _gemini_client = None
@@ -166,13 +169,16 @@ async def _gemini_call(model: str, contents: list, attempts: int = 3) -> dict:
     # "High demand" (503) and rate limits (429) are usually over in seconds: wait a little and try again.
     for attempt in range(attempts):
         try:
-            response = await get_gemini().aio.models.generate_content(
+            # A saturated model can take ~15 s just to say "busy": cap each try so the scan never hangs.
+            response = await asyncio.wait_for(get_gemini().aio.models.generate_content(
                 model=model, contents=contents, config=types.GenerateContentConfig(**cfg)
-            )
+            ), timeout=GEMINI_CALL_TIMEOUT)
             return parse_json(response.text or "")
         except Exception as e:
-            if not _gemini_busy(e) or attempt == attempts - 1:
-                raise
+            err = RuntimeError(f"503 UNAVAILABLE (timeout after {GEMINI_CALL_TIMEOUT:.0f}s)") \
+                if isinstance(e, asyncio.TimeoutError) else e
+            if not _gemini_busy(err) or attempt == attempts - 1:
+                raise err
             await asyncio.sleep(1.5 * (attempt + 1))
 
 
@@ -212,7 +218,8 @@ async def health_ai():
     except Exception as e:
         available = []
         results["list_models"] = str(e)[:160]
-    for m in [GEMINI_MODEL] + [x for x in available if x != GEMINI_MODEL][:3]:
+    others = [x for x in available if x != GEMINI_MODEL]
+    for m in [GEMINI_MODEL] + ([x for x in others if "lite" in x] + [x for x in others if "lite" not in x])[:3]:
         try:
             await _gemini_call(m, ['Return {"ok": true}'], attempts=1)
             results[m] = "ok"
