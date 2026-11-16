@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -55,6 +56,7 @@ export default function Root({ children }: PropsWithChildren) {
         }}
       >
         {children}
+        <Analytics />
       </body>
     </html>
   );
