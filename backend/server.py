@@ -115,6 +115,13 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
         contents.append(types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type="image/jpeg"))
     contents.append(prompt)
     model = _working_model["name"] or GEMINI_MODEL
+    # The main model was saturated a moment ago: go straight to the model that answered then (for 15 minutes).
+    if _busy_model["until"] > _time.monotonic() and _busy_model["use"]:
+        try:
+            return await _gemini_call(_busy_model["use"], contents, attempts=1)
+        except Exception as e:
+            logger.warning("Gemini %s (busy fallback) failed: %s", _busy_model["use"], e)
+            _busy_model["until"] = 0.0
     try:
         # Only one quick retry: when the main model is saturated it is faster to move to a lighter one.
         return await _gemini_call(model, contents, attempts=2)
@@ -142,7 +149,8 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
                     _working_model["name"] = candidate
                     logger.warning("Gemini: now using %s (set GEMINI_MODEL in Render to make it permanent)", candidate)
                 else:
-                    logger.warning("Gemini: %s busy, answered with %s", model, candidate)
+                    _busy_model.update(use=candidate, until=_time.monotonic() + 900)
+                    logger.warning("Gemini: %s busy, answered with %s (using it for 15 min)", model, candidate)
                 return result
             except Exception as ce:
                 logger.warning("Gemini %s failed too: %s", candidate, ce)
@@ -151,6 +159,7 @@ async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
 
 
 _working_model: dict = {"name": None}
+_busy_model: dict = {"use": None, "until": 0.0}  # temporary replacement while the main model is saturated
 
 
 def _gemini_busy(e: Exception) -> bool:
