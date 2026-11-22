@@ -1,5 +1,6 @@
 """Codigo de referido (?ref=...): se guarda al crear la cuenta y el admin ve registrados/activos por codigo."""
 from test_preregistro import api, clean_db, server  # noqa: F401
+from behappy import admin, core, security  # noqa: E402
 
 ADMIN = {"X-Admin-Token": "test-admin-token"}
 
@@ -26,14 +27,14 @@ async def google(api, monkeypatch, email, ref=None):
 
 
 async def stored(uid):
-    return await server.db.users.find_one({"user_id": uid})
+    return await core.db.users.find_one({"user_id": uid})
 
 
 def test_clean_ref():
-    assert server.clean_ref("  Silvano ") == "silvano"
-    assert server.clean_ref("ferr-sansalvario_2") == "ferr-sansalvario_2"
+    assert security.clean_ref("  Silvano ") == "silvano"
+    assert security.clean_ref("ferr-sansalvario_2") == "ferr-sansalvario_2"
     for bad in [None, "", "a", "-abc", "con espacio", "x" * 41, "<script>", "ref$1"]:
-        assert server.clean_ref(bad) is None
+        assert security.clean_ref(bad) is None
 
 
 async def test_register_saves_ref(api):
@@ -62,19 +63,19 @@ async def test_ref_not_exposed_to_user(api):
 
 
 async def test_admin_report(api, monkeypatch):
-    monkeypatch.setattr(server, "ADMIN_TOKEN", "test-admin-token")
+    monkeypatch.setattr(admin, "ADMIN_TOKEN", "test-admin-token")
     assert (await api.get("/api/admin/referidos")).status_code == 403
     _, u1 = await signup(api, "m1@example.com", ref="maria")
     _, u2 = await signup(api, "m2@example.com", ref="maria")
     _, u3 = await signup(api, "s1@example.com", ref="silvano")
     await signup(api, "x@example.com")
     for uid, status in ((u1, "ready"), (u1, "ready"), (u3, None)):  # activo = al menos 1 diagnostico terminado
-        doc = {"diagnosis_id": server.new_id("diag"), "user_id": uid}
+        doc = {"diagnosis_id": core.new_id("diag"), "user_id": uid}
         if status:
             doc["status"] = status
-        await server.db.diagnoses.insert_one(doc)
+        await core.db.diagnoses.insert_one(doc)
     for status in ("processing", "failed"):  # no cuentan
-        await server.db.diagnoses.insert_one({"diagnosis_id": server.new_id("diag"), "user_id": u2, "status": status})
+        await core.db.diagnoses.insert_one({"diagnosis_id": core.new_id("diag"), "user_id": u2, "status": status})
     r = await api.get("/api/admin/referidos", headers=ADMIN)
     assert r.status_code == 200, r.text
     data = r.json()
@@ -82,7 +83,7 @@ async def test_admin_report(api, monkeypatch):
     assert rows["maria"] == {"codigo": "maria", "registrados": 2, "activos": 1}
     assert rows["silvano"] == {"codigo": "silvano", "registrados": 1, "activos": 1}
     assert data["total_registrados"] == 3 and data["total_activos"] == 2
-    hoy = server.now().strftime("%Y-%m-%d")
+    hoy = core.now().strftime("%Y-%m-%d")
     assert (await api.get(f"/api/admin/referidos?desde={hoy}&hasta={hoy}", headers=ADMIN)).json()["total_registrados"] == 3
     assert (await api.get("/api/admin/referidos?desde=2099-01-01", headers=ADMIN)).json()["codigos"] == []
     assert (await api.get("/api/admin/referidos?desde=ayer", headers=ADMIN)).status_code == 400

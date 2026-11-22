@@ -8,6 +8,7 @@ import time
 import pytest
 
 from test_preregistro import api, clean_db, make_profile, register, server  # noqa: F401
+from behappy import mail, web  # noqa: E402
 
 SECRET = "whsec_test"
 
@@ -38,8 +39,8 @@ def stripe(monkeypatch):
 
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", SECRET)
     monkeypatch.delenv("WEB_PROXY_KEY", raising=False)
-    monkeypatch.setattr(server, "send_email", fake_mail)
-    monkeypatch.setattr(server, "stripe_api", fake_stripe)
+    monkeypatch.setattr(mail, "send_email", fake_mail)
+    monkeypatch.setattr(web, "stripe_api", fake_stripe)
     return state
 
 

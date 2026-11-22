@@ -1,4 +1,5 @@
 from test_preregistro import api, clean_db, register, server  # noqa: F401
+from behappy import ai, core, pro  # noqa: E402
 
 
 async def test_text_only_home_request_creates_specialist_diagnosis(api, monkeypatch):
@@ -22,7 +23,7 @@ async def test_text_only_home_request_creates_specialist_diagnosis(api, monkeypa
             "steps": [],
         }
 
-    monkeypatch.setattr(server, "gemini_json", fake_gemini_json)
+    monkeypatch.setattr(ai, "gemini_json", fake_gemini_json)
     response = await api.post(
         "/api/diagnose",
         headers=headers,
@@ -42,9 +43,9 @@ async def test_text_only_home_request_creates_specialist_diagnosis(api, monkeypa
     assert diagnosis["image_path"] is None
     assert received["image_b64"] is None
     assert "Quiero pintar el dormitorio de azul" in received["prompt"]
-    stored = await server.db.diagnoses.find_one({"diagnosis_id": diagnosis["diagnosis_id"]})
+    stored = await core.db.diagnoses.find_one({"diagnosis_id": diagnosis["diagnosis_id"]})
     assert stored["image_path"] is None
-    assert server.diagnosis_summary(stored)["user_note"] == "Quiero pintar el dormitorio de azul"
+    assert pro.diagnosis_summary(stored)["user_note"] == "Quiero pintar el dormitorio de azul"
 
 
 async def test_diagnose_requires_photo_or_description(api):

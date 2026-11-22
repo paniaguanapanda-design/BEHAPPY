@@ -4,14 +4,15 @@ from io import BytesIO
 from PIL import Image
 
 from test_preregistro import TORINO_POINT, api, clean_db, make_profile, register, server  # noqa: F401
+from behappy import core, geo, pro, push, storage  # noqa: E402
 
 
 async def specialist_account(api, email, zone="TO", categories=None):
     headers = await register(api, email)
     profile = await make_profile(api, headers, zone=zone, categories=categories or ["plumbing"])
-    await server.db.specialists.update_one(
+    await core.db.specialists.update_one(
         {"specialist_id": profile["specialist_id"]},
-        {"$set": {"membership_expires_at": server.iso(server.now() + timedelta(days=30))}},
+        {"$set": {"membership_expires_at": core.iso(core.now() + timedelta(days=30))}},
     )
     return headers, profile
 
@@ -31,9 +32,9 @@ async def test_marketplace_quote_is_private_until_client_accepts(api, monkeypatc
     client_headers = await register(api, "market-client@example.com")
     spec_headers, _ = await specialist_account(api, "market-spec@example.com")
     second_headers, _ = await specialist_account(api, "market-spec-two@example.com")
-    monkeypatch.setattr(server, "reverse_place", lambda *_: _async_value("Torino"))
-    monkeypatch.setattr(server, "send_push", lambda *_args, **_kwargs: _async_value(None))
-    monkeypatch.setattr(server, "after_message", lambda *_args, **_kwargs: _async_value(None))
+    monkeypatch.setattr(geo, "reverse_place", lambda *_: _async_value("Torino"))
+    monkeypatch.setattr(push, "send_push", lambda *_args, **_kwargs: _async_value(None))
+    monkeypatch.setattr(pro, "after_message", lambda *_args, **_kwargs: _async_value(None))
 
     created = await publish_request(api, client_headers)
     assert created.status_code == 200, created.text
@@ -44,7 +45,7 @@ async def test_marketplace_quote_is_private_until_client_accepts(api, monkeypatc
     public_request = next(item for item in feed.json() if item["request_id"] == request_id)
     assert public_request["distance_km"] == 0
     assert not {"client_id", "address", "lat", "lng", "zone", "phone", "email"} & public_request.keys()
-    assert await server.db.conversations.count_documents({}) == 0
+    assert await core.db.conversations.count_documents({}) == 0
 
     first_quote = await api.post(
         f"/api/requests/board/{request_id}/quotes",
@@ -70,7 +71,7 @@ async def test_marketplace_quote_is_private_until_client_accepts(api, monkeypatc
     assert len(offers) == 2
     assert all(offer["status"] == "pending" for offer in offers)
     assert all("conversation_id" not in offer for offer in offers)
-    assert await server.db.conversations.count_documents({}) == 0
+    assert await core.db.conversations.count_documents({}) == 0
 
     accepted = await api.patch(
         f"/api/quotes/{first_quote.json()['quote_id']}",
@@ -79,14 +80,14 @@ async def test_marketplace_quote_is_private_until_client_accepts(api, monkeypatc
     )
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["conversation_id"]
-    assert await server.db.conversations.count_documents({}) == 1
-    stored_request = await server.db.service_requests.find_one({"request_id": request_id}, {"_id": 0})
+    assert await core.db.conversations.count_documents({}) == 1
+    stored_request = await core.db.service_requests.find_one({"request_id": request_id}, {"_id": 0})
     assert stored_request["status"] == "accepted"
     assert stored_request["accepted_quote_id"] == first_quote.json()["quote_id"]
-    stored_quote = await server.db.quotes.find_one({"quote_id": first_quote.json()["quote_id"]}, {"_id": 0})
+    stored_quote = await core.db.quotes.find_one({"quote_id": first_quote.json()["quote_id"]}, {"_id": 0})
     assert stored_quote["status"] == "accepted"
     assert stored_quote["conversation_id"] == accepted.json()["conversation_id"]
-    rejected_quote = await server.db.quotes.find_one({"quote_id": second_quote.json()["quote_id"]}, {"_id": 0})
+    rejected_quote = await core.db.quotes.find_one({"quote_id": second_quote.json()["quote_id"]}, {"_id": 0})
     assert rejected_quote["status"] == "rejected"
 
 
@@ -97,15 +98,15 @@ async def test_marketplace_feed_filters_by_membership_trade_province_and_radius(
     wrong_province_headers, wrong_province = await specialist_account(api, "wrong-province@example.com", zone="MI")
     outside_headers, outside_radius = await specialist_account(api, "outside-radius@example.com")
     inactive_headers, inactive = await specialist_account(api, "inactive@example.com")
-    await server.db.specialists.update_one(
+    await core.db.specialists.update_one(
         {"specialist_id": outside_radius["specialist_id"]},
         {"$set": {"zone.lat": TORINO_POINT[0] + 1, "zone.lng": TORINO_POINT[1], "zone.radius_km": 1}},
     )
-    await server.db.specialists.update_one(
+    await core.db.specialists.update_one(
         {"specialist_id": inactive["specialist_id"]},
-        {"$set": {"membership_expires_at": server.iso(server.now() - timedelta(days=1))}},
+        {"$set": {"membership_expires_at": core.iso(core.now() - timedelta(days=1))}},
     )
-    monkeypatch.setattr(server, "reverse_place", lambda *_: _async_value("Torino"))
+    monkeypatch.setattr(geo, "reverse_place", lambda *_: _async_value("Torino"))
     created = await publish_request(api, client_headers)
     assert created.status_code == 200, created.text
     rid = created.json()["request_id"]
@@ -120,7 +121,7 @@ async def test_marketplace_feed_filters_by_membership_trade_province_and_radius(
 async def test_marketplace_rejection_and_cancellation_do_not_open_chat(api, monkeypatch):
     client_headers = await register(api, "market-cancel-client@example.com")
     spec_headers, _ = await specialist_account(api, "market-cancel-spec@example.com")
-    monkeypatch.setattr(server, "reverse_place", lambda *_: _async_value("Torino"))
+    monkeypatch.setattr(geo, "reverse_place", lambda *_: _async_value("Torino"))
     request_response = await publish_request(api, client_headers)
     rid = request_response.json()["request_id"]
     quote_response = await api.post(
@@ -131,7 +132,7 @@ async def test_marketplace_rejection_and_cancellation_do_not_open_chat(api, monk
     quote_id = quote_response.json()["quote_id"]
     rejected = await api.patch(f"/api/quotes/{quote_id}", headers=client_headers, json={"status": "rejected"})
     assert rejected.status_code == 200
-    assert await server.db.conversations.count_documents({}) == 0
+    assert await core.db.conversations.count_documents({}) == 0
 
     cancelled_response = await publish_request(api, client_headers, title="Cambiar grifo")
     cancelled_id = cancelled_response.json()["request_id"]
@@ -144,18 +145,18 @@ async def test_marketplace_rejection_and_cancellation_do_not_open_chat(api, monk
         f"/api/requests/{cancelled_id}", headers=client_headers, json={"status": "cancelled"}
     )
     assert cancelled.status_code == 200, cancelled.text
-    pending = await server.db.quotes.find_one({"request_id": cancelled_id}, {"_id": 0})
+    pending = await core.db.quotes.find_one({"request_id": cancelled_id}, {"_id": 0})
     assert pending["status"] == "rejected"
-    assert await server.db.conversations.count_documents({}) == 0
+    assert await core.db.conversations.count_documents({}) == 0
 
 
 async def test_marketplace_photos_are_only_available_to_owner_or_matching_specialists(api, monkeypatch):
     client_headers = await register(api, "market-photo-client@example.com")
     spec_headers, _ = await specialist_account(api, "market-photo-spec@example.com")
     outsider_headers, _ = await specialist_account(api, "market-photo-outsider@example.com", zone="MI")
-    monkeypatch.setattr(server, "reverse_place", lambda *_: _async_value("Torino"))
-    monkeypatch.setattr(server, "get_object", lambda _path: (b"image-bytes", "image/jpeg"))
-    monkeypatch.setattr(server, "put_object", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(geo, "reverse_place", lambda *_: _async_value("Torino"))
+    monkeypatch.setattr(storage, "get_object", lambda _path: (b"image-bytes", "image/jpeg"))
+    monkeypatch.setattr(storage, "put_object", lambda *_args, **_kwargs: None)
     image = BytesIO()
     Image.new("RGB", (4, 4), "red").save(image, format="JPEG")
     upload = await api.post(

@@ -1,10 +1,11 @@
 """Reglas del diagnóstico: qué es un electrodoméstico, qué va al especialista y qué acción se recomienda."""
 from test_preregistro import server  # noqa: F401
+from behappy import diagnosis  # noqa: E402
 
 
 def norm(**r):
     base = {"category": "plumbing", "difficulty": "medium", "steps": [{"title": "x", "detail": "y"}]}
-    return server.normalize_diagnosis({**base, **r})
+    return diagnosis.normalize_diagnosis({**base, **r})
 
 
 def test_water_heater_is_not_an_appliance_and_goes_to_a_specialist():

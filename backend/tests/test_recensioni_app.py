@@ -4,6 +4,7 @@ import re
 import pytest
 
 from test_preregistro import api, clean_db, make_profile, register, server  # noqa: F401
+from behappy import mail as mail_mod  # noqa: E402
 
 
 @pytest.fixture
@@ -15,7 +16,7 @@ def mail(monkeypatch):
         return True
 
     monkeypatch.delenv("WEB_PROXY_KEY", raising=False)
-    monkeypatch.setattr(server, "send_email", fake_mail)
+    monkeypatch.setattr(mail_mod, "send_email", fake_mail)
     return sent
 
 

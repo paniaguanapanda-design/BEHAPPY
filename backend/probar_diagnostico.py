@@ -10,7 +10,7 @@ import base64
 import json
 import sys
 
-import server
+from behappy import ai, diagnosis
 
 
 async def main():
@@ -20,12 +20,12 @@ async def main():
     foto = sys.argv[1]
     lang_code = sys.argv[2] if len(sys.argv) > 2 else "it"
     nota = sys.argv[3] if len(sys.argv) > 3 else ""
-    raw = server.shrink_image(open(foto, "rb").read())
+    raw = diagnosis.shrink_image(open(foto, "rb").read())
     b64 = base64.b64encode(raw).decode()
-    lang = server.LANG_NAME.get(lang_code, "Italian")
+    lang = diagnosis.LANG_NAME.get(lang_code, "Italian")
     extra = f"User note: {nota}" if nota else ""
-    prompt = server.DIAG_PROMPT.format(lang=lang, cats=server.CATEGORIES, extra=extra)
-    r = server.normalize_diagnosis(await server.gemini_json(prompt, b64))
+    prompt = diagnosis.DIAG_PROMPT.format(lang=lang, cats=diagnosis.CATEGORIES, extra=extra)
+    r = diagnosis.normalize_diagnosis(await ai.gemini_json(prompt, b64))
     print(json.dumps(r, ensure_ascii=False, indent=2))
     print("\n--- RESUMEN ---")
     print("Objeto:     ", r.get("object"))

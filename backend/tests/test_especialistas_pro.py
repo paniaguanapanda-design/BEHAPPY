@@ -4,6 +4,8 @@ from datetime import timedelta
 import pytest
 
 from test_preregistro import api, clean_db, make_profile, register, server  # noqa: F401
+from behappy import core, geo, mail, push  # noqa: E402
+from behappy import pro as pro_mod  # noqa: E402
 
 TORINO = (45.0703, 7.6869)
 LINGOTTO = (45.0310, 7.6650)  # ~4,6 km del centro
@@ -27,17 +29,17 @@ def pushes(monkeypatch):
             sent.append({"mail": a})
         return True
 
-    monkeypatch.setattr(server, "send_push", fake_push)
-    monkeypatch.setattr(server, "reverse_place", fake_place)
-    monkeypatch.setattr(server, "send_email", fake_mail)
+    monkeypatch.setattr(push, "send_push", fake_push)
+    monkeypatch.setattr(geo, "reverse_place", fake_place)
+    monkeypatch.setattr(mail, "send_email", fake_mail)
     return sent
 
 
 async def pro(api, email, zone="TO", **extra):
     h = await register(api, email)
     s = await make_profile(api, h, zone=zone, **extra)
-    await server.db.specialists.update_one({"specialist_id": s["specialist_id"]},
-                                           {"$set": {"membership_expires_at": server.iso(server.now() + timedelta(days=30))}})
+    await core.db.specialists.update_one({"specialist_id": s["specialist_id"]},
+                                           {"$set": {"membership_expires_at": core.iso(core.now() + timedelta(days=30))}})
     return h, s
 
 
@@ -144,9 +146,9 @@ async def test_featured_first_and_at_most_three_per_trade(api, pushes):
     for i in range(5):
         h, s = await pro(api, f"p{i}@x.it")
         specs.append(s)
-    until = server.iso(server.now() + timedelta(days=7))
+    until = core.iso(core.now() + timedelta(days=7))
     for s in specs[1:]:
-        await server.db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {"featured_until": until}})
+        await core.db.specialists.update_one({"specialist_id": s["specialist_id"]}, {"$set": {"featured_until": until}})
     c = await register(api, "cliente@x.it")
     out = (await api.get("/api/specialists?category=plumbing", headers=c)).json()
     assert [x["featured"] for x in out].count(True) == 3
@@ -197,15 +199,15 @@ async def test_nearby_diagnosis_alert_respects_zone_trade_and_switch(api, pushes
     h3, s3 = await pro(api, "milano@x.it")
     await set_zone(api, h3, MILANO, radius=50)
     doc = {"diagnosis_id": "diag_x", "user_id": "u_cliente", "category": "plumbing", "title_it": "Scarico intasato"}
-    await server.notify_nearby_diagnosis(doc, *LINGOTTO)
+    await pro_mod.notify_nearby_diagnosis(doc, *LINGOTTO)
     assert len(pushes) == 1 and "a San Salvario" in pushes[0]["body"]["it"]
     # una diagnosis en Milano solo avisa al de Milano (aunque el radio de 50 km no llegue a Torino de todas formas)
-    await server.notify_nearby_diagnosis({**doc, "diagnosis_id": "diag_m"}, *MILANO)
+    await pro_mod.notify_nearby_diagnosis({**doc, "diagnosis_id": "diag_m"}, *MILANO)
     assert len(pushes) == 2 and pushes[-1]["user_id"] != pushes[0]["user_id"]
     pushes.pop()
     assert pushes[0]["title"]["it"] == "Richiesta di idraulica vicino a te"
     await api.put("/api/specialists/me/alerts", headers=h, json={"enabled": False, "categories": ["plumbing"]})
-    await server.notify_nearby_diagnosis(doc, *LINGOTTO)
+    await pro_mod.notify_nearby_diagnosis(doc, *LINGOTTO)
     assert len(pushes) == 1
 
 
@@ -220,7 +222,7 @@ async def test_three_clients_who_talked_with_him_hide_the_profile(api, pushes):
         r = await api.post("/api/reports", headers=c, json={"target_type": "specialist", "target_id": sid,
                                                             "reason": "broke_agreement", "details": "Non è venuto"})
         assert r.status_code == 200
-        hidden = (await server.db.specialists.find_one({"specialist_id": sid}))["hidden"] if i == 2 else None
+        hidden = (await core.db.specialists.find_one({"specialist_id": sid}))["hidden"] if i == 2 else None
     assert hidden is True
     assert any("mail" in p for p in pushes)
     c = await register(api, "nuovo@x.it")
@@ -236,8 +238,8 @@ async def test_review_prompt_two_days_after_first_reply(api, pushes):
     await api.post(f"/api/conversations/{cid}/messages", headers=h, json={"text": "Ciao!"})
     await settle()
     assert (await api.get(f"/api/conversations/{cid}", headers=c)).json()["review_prompt"] is False
-    old = server.iso(server.now() - timedelta(days=3))
-    await server.db.conversations.update_one({"conversation_id": cid}, {"$set": {"first_reply_at": old}})
+    old = core.iso(core.now() - timedelta(days=3))
+    await core.db.conversations.update_one({"conversation_id": cid}, {"$set": {"first_reply_at": old}})
     assert (await api.get(f"/api/conversations/{cid}", headers=c)).json()["review_prompt"] is True
     assert (await api.get(f"/api/conversations/{cid}", headers=h)).json()["review_prompt"] is False
 
@@ -246,7 +248,7 @@ async def test_diagnosis_travels_to_the_chat(api, pushes):
     h, s = await pro(api, "diag@x.it")
     c = await register(api, "cli@x.it")
     uid = (await api.get("/api/auth/me", headers=c)).json()["user_id"]
-    await server.db.diagnoses.insert_one({"diagnosis_id": "diag_1", "user_id": uid, "category": "plumbing",
+    await core.db.diagnoses.insert_one({"diagnosis_id": "diag_1", "user_id": uid, "category": "plumbing",
                                           "title_it": "Rubinetto che gocciola", "title_es": "Grifo que gotea",
                                           "image_path": "behappy/uploads/x/f.jpg",
                                           "materials": [{"name": "cartuccia 35 mm", "quantity": "1"}]})

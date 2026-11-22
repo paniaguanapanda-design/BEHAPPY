@@ -1,13 +1,14 @@
 """Concorso «Natale senza guasti»: el usuario marca un diagnostico como resuelto y el admin saca la lista de Torino."""
 from test_preregistro import PROVINCES, api, clean_db, make_profile, register, server  # noqa: F401
+from behappy import admin, core  # noqa: E402
 
 ADMIN = {"X-Admin-Token": "test-admin-token"}
 
 
 async def diag(uid, status="ready", created=None):
-    did = server.new_id("diag")
-    await server.db.diagnoses.insert_one({"diagnosis_id": did, "user_id": uid, "status": status,
-                                          "created_at": created or server.iso(server.now())})
+    did = core.new_id("diag")
+    await core.db.diagnoses.insert_one({"diagnosis_id": did, "user_id": uid, "status": status,
+                                          "created_at": created or core.iso(core.now())})
     return did
 
 
@@ -23,7 +24,7 @@ async def test_mark_resolved_saves_once_with_province(api):
     first = r.json()["resolved_at"]
     again = await api.post(f"/api/diagnoses/{did}/resolved", headers=h)
     assert again.json()["resolved_at"] == first  # la primera vez manda
-    d = await server.db.diagnoses.find_one({"diagnosis_id": did})
+    d = await core.db.diagnoses.find_one({"diagnosis_id": did})
     assert d["resolved_province"] == "TO"
     assert (await api.get(f"/api/diagnoses/{did}", headers=h)).json()["resolved_at"] == first
 
@@ -39,7 +40,7 @@ async def test_cannot_resolve_others_or_unfinished(api):
 
 
 async def test_admin_list_only_torino_users_resolved_in_period(api, monkeypatch):
-    monkeypatch.setattr(server, "ADMIN_TOKEN", "test-admin-token")
+    monkeypatch.setattr(admin, "ADMIN_TOKEN", "test-admin-token")
     assert (await api.get("/api/admin/concorso?desde=2026-01-01&hasta=2099-01-01")).status_code == 403
     ok = await register(api, "ok@example.com")
     for _ in range(2):  # dos diagnosticos resueltos cuentan como una sola participacion
@@ -55,7 +56,7 @@ async def test_admin_list_only_torino_users_resolved_in_period(api, monkeypatch)
     old = await register(api, "old@example.com")
     await api.post(f"/api/diagnoses/{await diag(await me(api, old), created='2020-01-01T00:00:00+00:00')}/resolved", headers=old)
 
-    hoy = server.now().strftime("%Y-%m-%d")
+    hoy = core.now().strftime("%Y-%m-%d")
     r = await api.get(f"/api/admin/concorso?desde={hoy}&hasta={hoy}", headers=ADMIN)
     assert r.status_code == 200, r.text
     data = r.json()
