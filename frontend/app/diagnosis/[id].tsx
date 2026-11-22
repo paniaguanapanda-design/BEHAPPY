@@ -53,18 +53,6 @@ export default function Diagnosis() {
     refetchInterval: (query) => ((query.state.data as any)?.status === "processing" ? 2500 : false),
   });
   const [done, setDone] = useState<Record<number, boolean>>({});
-  // "Ho risolto!": the user says the problem is fixed (also counts for the Torino Christmas contest).
-  const [resolving, setResolving] = useState(false);
-  const markResolved = async () => {
-    setResolving(true);
-    try {
-      await api(`/diagnoses/${id}/resolved`, { method: "POST" });
-      await q.refetch();
-    } catch {
-    } finally {
-      setResolving(false);
-    }
-  };
 
   if (q.isLoading) return <Loading />;
   const d = q.data;
@@ -264,28 +252,6 @@ export default function Diagnosis() {
               ) : null}
             </>
           )}
-
-          {d.is_home_problem !== false && (
-            <View style={styles.resolvedBox} testID="resolved-box">
-              {d.resolved_at ? (
-                <View style={styles.actionRow}>
-                  <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-                  <Text style={styles.actionTitle}>{t("resolved_done")}</Text>
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.outcomeText}>{t("resolved_ask")}</Text>
-                  <Button
-                    title={t("resolved_btn")}
-                    icon="checkmark-circle"
-                    loading={resolving}
-                    onPress={markResolved}
-                    testID="resolved-button"
-                  />
-                </>
-              )}
-            </View>
-          )}
         </View>
       </ScrollView>
     </View>
@@ -296,7 +262,6 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   abs: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   hero: { height: 340, justifyContent: "flex-end" },
-  resolvedBox: { marginTop: 24, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: c.border, gap: 12 },
   back: { position: "absolute", left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: c.scrim, alignItems: "center", justifyContent: "center" },
   heroContent: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 52, gap: 12 },
   tagRow: { flexDirection: "row", gap: 8, alignItems: "center" },

@@ -112,7 +112,6 @@ export const en = {
   turin: "Your area", trades: "Trades",
   sub_muratura: "Masonry", sub_piastrellista: "Tiling", sub_pintura: "Painting", sub_suelos: "Floors", sub_tejados: "Roofs",
   sub_puertas: "Doors", sub_ventanas: "Windows", sub_parquet: "Parquet", sub_cerrajeria: "Locksmith", sub_cristales: "Glass",
-  resolved_ask: "Already fixed it? Mark it as solved.", resolved_btn: "I fixed it!", resolved_done: "Fixed! Well done",
   act_label: "What needs doing", act_repair: "It can be repaired", act_reposition: "Put it back in place", act_replace: "Better to replace it", act_inspect: "It needs checking",
   appl_out_repair: "An appliance technician can do it. No need to buy a new one.",
   appl_out_reposition: "Just place or fix it properly. If you're not sure, ask a technician.",

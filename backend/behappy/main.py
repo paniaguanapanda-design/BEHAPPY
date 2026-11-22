@@ -2,7 +2,7 @@ import os
 import asyncio
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from . import admin, ai, app_reviews, auth, chat, concorso, diagnosis, files, geo, marketplace, membership, moderation, pro, push, specialists, storage, stores, web
+from . import admin, ai, app_reviews, auth, chat, diagnosis, files, geo, marketplace, membership, moderation, pro, push, specialists, storage, stores, web
 from .core import CATEGORIES, client, db, logger
 
 
@@ -72,7 +72,6 @@ app.include_router(ai.router)
 app.include_router(auth.router)
 app.include_router(files.router)
 app.include_router(diagnosis.router)
-app.include_router(concorso.router)
 app.include_router(specialists.router)
 app.include_router(moderation.router)
 app.include_router(admin.router)
