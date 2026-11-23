@@ -1,10 +1,11 @@
-"""Google Gemini: llamadas, modelo de reserva, topes diarios de gasto y /api/health/ai."""
+"""IA: Grok (xAI) como principal y Google Gemini de reserva, topes de gasto y /api/health/ai."""
 import os
 import asyncio
 import re
 import json
 import base64
 import time as _time
+import httpx
 from fastapi.concurrency import run_in_threadpool
 from typing import Optional
 from google import genai
@@ -41,8 +42,14 @@ def get_gemini():
 # Gemini y Google Maps se pagan por uso. Ademas de los limites por persona, hay un maximo al dia para TODA la app:
 # aunque alguien cree muchas cuentas, no puede gastar mas que esto. Se cambian en Render sin tocar el codigo.
 DAILY_CAPS = {
-    "gemini": int(os.environ.get("DAILY_MAX_GEMINI", "800")),  # diagnosis + traducciones
+    "xai": int(os.environ.get("DAILY_MAX_XAI", "3000")),  # Grok: diagnosis + traducciones (creditos prepagados)
+    "gemini": int(os.environ.get("DAILY_MAX_GEMINI", "800")),  # Gemini: solo cuando Grok no responde o llega a su tope
     "maps": int(os.environ.get("DAILY_MAX_MAPS", "200")),  # Places + Geocoding (alta de ferreterias)
+}
+# Maximo por hora para toda la app (frena un abuso rapido antes de llegar al tope del dia).
+HOURLY_CAPS = {
+    "xai": int(os.environ.get("HOURLY_MAX_XAI", "1500")),
+    "gemini": int(os.environ.get("HOURLY_MAX_GEMINI", "600")),
 }
 
 
@@ -68,9 +75,91 @@ async def spend_daily(kind: str) -> None:
         raise DailyLimitReached(kind)
 
 
+# --- Grok (xAI): proveedor principal ---
+# API compatible con OpenAI. El modelo "non-reasoning" no piensa antes de responder: es el mas rapido y barato que
+# acepta fotos. Si Grok falla (caido, saturado, sin creditos, tope alcanzado), la peticion pasa a Gemini sin que la
+# persona note nada; y durante un rato todas van directas a Gemini para no esperar cada una su propio fallo.
+XAI_MODEL = os.environ.get("XAI_MODEL", "grok-4.20-0309-non-reasoning")
+XAI_CALL_TIMEOUT = float(os.environ.get("XAI_CALL_TIMEOUT", "20"))
+XAI_BASE_URL = os.environ.get("XAI_BASE_URL", "https://api.x.ai/v1")
+XAI_PAUSE_ACCOUNT = 600  # clave invalida o sin creditos: 10 minutos solo con Gemini
+XAI_PAUSE_BUSY = 60  # saturado o sin respuesta: 1 minuto solo con Gemini
+_xai_pause: dict = {"until": 0.0, "why": ""}
+_xai_http: Optional[httpx.AsyncClient] = None
+
+
+class XaiError(Exception):
+    def __init__(self, status: int, detail: str):
+        super().__init__(f"xAI {status}: {detail}")
+        self.status = status
+
+
+def xai_configured() -> bool:
+    return bool(os.environ.get("XAI_API_KEY"))
+
+
+def _xai_client() -> httpx.AsyncClient:
+    """Un solo cliente para todas las llamadas: reutiliza la conexion y ahorra tiempo en cada diagnostico."""
+    global _xai_http
+    if _xai_http is None:
+        _xai_http = httpx.AsyncClient(base_url=XAI_BASE_URL, timeout=XAI_CALL_TIMEOUT,
+                                      limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
+    return _xai_http
+
+
+async def xai_json(prompt: str, image_b64: Optional[str] = None, model: Optional[str] = None) -> dict:
+    """Pide a Grok una respuesta en JSON, con o sin foto. Un reintento rapido si esta saturado."""
+    content: list = [{"type": "text", "text": prompt}]
+    if image_b64:
+        content.insert(0, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
+    body = {"model": model or XAI_MODEL, "response_format": {"type": "json_object"},
+            "messages": [{"role": "system", "content": "You output valid JSON only, no markdown."},
+                         {"role": "user", "content": content}]}
+    headers = {"Authorization": f"Bearer {os.environ.get('XAI_API_KEY', '')}"}
+    for attempt in range(2):
+        try:
+            r = await asyncio.wait_for(_xai_client().post("/chat/completions", json=body, headers=headers),
+                                       timeout=XAI_CALL_TIMEOUT)
+        except (asyncio.TimeoutError, httpx.HTTPError) as e:
+            if attempt == 1:
+                raise XaiError(503, f"sin respuesta ({type(e).__name__})")
+            continue
+        if r.status_code == 200:
+            return diagnosis.parse_json(r.json()["choices"][0]["message"]["content"] or "")
+        if r.status_code in (429, 500, 502, 503, 504) and attempt == 0:
+            await asyncio.sleep(0.7)
+            continue
+        raise XaiError(r.status_code, r.text[:200])
+    raise XaiError(503, "sin respuesta")
+
+
+def _pause_xai(e: Exception) -> None:
+    account = isinstance(e, XaiError) and e.status in (400, 401, 402, 403, 404)
+    secs = XAI_PAUSE_ACCOUNT if account else XAI_PAUSE_BUSY
+    _xai_pause.update(until=_time.monotonic() + secs, why=str(e)[:160])
+    logger.warning("Grok en pausa %ss, todo va a Gemini: %s", secs, e)
+
+
+async def ai_json(prompt: str, image_b64: Optional[str] = None) -> dict:
+    """Respuesta en JSON de la IA: Grok primero, Gemini si Grok no puede. Solo falla si fallan los dos."""
+    if xai_configured() and _xai_pause["until"] <= _time.monotonic():
+        try:
+            rate_limit("xai-global", HOURLY_CAPS["xai"], 3600)
+            await spend_daily("xai")
+            return await xai_json(prompt, image_b64)
+        except DailyLimitReached:
+            logger.warning("Grok: tope diario alcanzado, sigue Gemini")
+        except Exception as e:
+            if isinstance(e, (XaiError, httpx.HTTPError)):
+                _pause_xai(e)  # caido, saturado o sin creditos: los siguientes van directos a Gemini
+            else:
+                logger.warning("Grok failed: %s", e)  # p. ej. un JSON mal formado: solo esta peticion va a Gemini
+    return await gemini_json(prompt, image_b64)
+
+
 async def gemini_json(prompt: str, image_b64: Optional[str] = None) -> dict:
     """Pide a Gemini una respuesta en JSON, con o sin foto."""
-    rate_limit("gemini-global", 600, 3600)
+    rate_limit("gemini-global", HOURLY_CAPS["gemini"], 3600)
     await spend_daily("gemini")
     contents = []
     if image_b64:
@@ -177,12 +266,22 @@ _ai_check_cache: dict = {"at": 0.0, "out": None}
 
 @router.get("/health/ai")
 async def health_ai():
-    """Public, cached check of the AI: which Gemini models answer right now (no user data, no keys).
-    At most one real check per 2 minutes, with a tiny text prompt."""
+    """Public, cached check of the AI: whether Grok answers and which Gemini models answer right now (no user data,
+    no keys). At most one real check per 2 minutes, with a tiny text prompt."""
     t = _time.monotonic()
     if _ai_check_cache["out"] and t - _ai_check_cache["at"] < 120:
         return _ai_check_cache["out"]
     _ai_check_cache["at"] = t
+    xai = {"configured": xai_configured(), "model": XAI_MODEL,
+           "paused_for_s": max(0, round(_xai_pause["until"] - t)), "pause_reason": _xai_pause["why"] or None}
+    if xai["configured"]:
+        started = _time.monotonic()
+        try:
+            await xai_json('Return {"ok": true}')
+            xai["result"] = "ok"
+            xai["seconds"] = round(_time.monotonic() - started, 2)
+        except Exception as e:
+            xai["result"] = str(e)[:160]
     results = {}
     try:
         available = await run_in_threadpool(_available_flash_models)
@@ -196,7 +295,8 @@ async def health_ai():
             results[m] = "ok"
         except Exception as e:
             results[m] = str(e)[:160]
-    out = {"main_model": GEMINI_MODEL, "working_model": _working_model["name"], "available": available[:8],
+    out = {"primary": "xai" if xai["configured"] else "gemini", "xai": xai,
+           "main_model": GEMINI_MODEL, "working_model": _working_model["name"], "available": available[:8],
            "results": results, "checked_at": iso(now())}
     _ai_check_cache["out"] = out
     return out
@@ -205,7 +305,7 @@ async def health_ai():
 async def caption_both(caption: str) -> dict:
     caption = caption.strip()
     try:
-        r = await gemini_json('Translate this short work-photo caption. Return {"es": "<Spanish>", "it": "<Italian>"}. '
+        r = await ai_json('Translate this short work-photo caption. Return {"es": "<Spanish>", "it": "<Italian>"}. '
                               f'Caption: {json.dumps(caption, ensure_ascii=False)}')
         return {"es": str(r.get("es") or caption), "it": str(r.get("it") or caption)}
     except Exception as e:

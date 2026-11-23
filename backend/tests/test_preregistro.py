@@ -51,6 +51,7 @@ async def clean_db(monkeypatch):
     monkeypatch.setattr(storage, "S3_BUCKET", None)
     monkeypatch.setattr(storage, "ON_RENDER", False)
     monkeypatch.setenv("WEB_PROXY_KEY", "test-web-proxy-key")
+    monkeypatch.delenv("XAI_API_KEY", raising=False)  # las pruebas nunca llaman a Grok de verdad
     for name in await core.db.list_collection_names():
         await core.db[name].drop()
     await main.startup()

@@ -207,9 +207,9 @@ async def diagnose(body: DiagnoseIn, request: Request):
 
 async def _run_diagnosis(diagnosis_id: str, prompt: str, b64: Optional[str], user: dict,
                          lat: Optional[float], lng: Optional[float]) -> None:
-    """Background part of POST /diagnose: ask Gemini, then mark the diagnosis ready or failed."""
+    """Background part of POST /diagnose: ask the AI (Grok, or Gemini as backup), then mark the diagnosis ready or failed."""
     try:
-        result = normalize_diagnosis(await ai.gemini_json(prompt, b64))
+        result = normalize_diagnosis(await ai.ai_json(prompt, b64))
     except ai.DailyLimitReached:
         await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {
             "status": "failed", "error": "Oggi il servizio è molto richiesto: riprova domani. / Hoy hay mucha demanda: inténtalo mañana."}})
@@ -258,7 +258,7 @@ async def get_diagnosis(diagnosis_id: str, request: Request, lang: Optional[str]
         if not cached:
             src = {k: d.get(k) for k in TRANSLATABLE}
             try:
-                cached = await ai.gemini_json(f"Translate every string value of this JSON into {LANG_NAME[lang]}. Keep the same keys and "
+                cached = await ai.ai_json(f"Translate every string value of this JSON into {LANG_NAME[lang]}. Keep the same keys and "
                                            f"structure, return JSON only.\n{json.dumps(src, ensure_ascii=False)}")
                 cached = {k: cached.get(k, src[k]) for k in TRANSLATABLE}
                 await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {f"i18n.{lang}": cached}})

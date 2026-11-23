@@ -50,7 +50,7 @@ export default function Diagnosis() {
     queryKey: ["diagnosis", id, lang],
     queryFn: () => api<any>(`/diagnoses/${id}?lang=${lang}`),
     // The server analyses in the background: ask again every 2.5 s while it is still "processing".
-    refetchInterval: (query) => ((query.state.data as any)?.status === "processing" ? 2500 : false),
+    refetchInterval: (query) => ((query.state.data as any)?.status === "processing" ? 1500 : false),
   });
   const [done, setDone] = useState<Record<number, boolean>>({});
 

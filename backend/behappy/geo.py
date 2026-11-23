@@ -1,5 +1,6 @@
 """Lugares y provincias (Nominatim) y zona del usuario."""
 import asyncio
+import os
 import re
 import httpx
 import time as _time
@@ -15,14 +16,19 @@ router = APIRouter(prefix="/api")
 
 
 async def reverse_place(lat: float, lng: float) -> Optional[str]:
-    try:
-        async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "BeHappy/1.0 (info@be-happyapp.com)"}) as hc:
-            r = await hc.get("https://nominatim.openstreetmap.org/reverse",
-                             params={"lat": lat, "lon": lng, "format": "jsonv2", "zoom": 14, "accept-language": "it"})
-        a = r.json().get("address") or {}
-        return a.get("suburb") or a.get("quarter") or a.get("neighbourhood") or a.get("city_district") or a.get("city")
-    except Exception:
+    """Nombre del barrio o ciudad de un punto (con cache de ~100 m), pasando por la fila de Nominatim."""
+    key = f"place:{lat:.3f}:{lng:.3f}"
+    hit = await db.geo_cache.find_one({"_id": key})
+    if hit:
+        return hit.get("place")
+    data = await _nominatim("reverse", {"lat": lat, "lon": lng, "zoom": 14})
+    if not isinstance(data, dict) or data.get("error"):
         return None
+    a = data.get("address") or {}
+    place = a.get("suburb") or a.get("quarter") or a.get("neighbourhood") or a.get("city_district") or a.get("city")
+    if place:
+        await db.geo_cache.update_one({"_id": key}, {"$set": {"place": place, "at": iso(now())}}, upsert=True)
+    return place
 
 
 # --- Provincias: cliente y especialista solo se encuentran dentro de la misma provincia ---
@@ -30,10 +36,26 @@ async def reverse_place(lat: float, lng: float) -> Optional[str]:
 # La provincia sale del punto en el mapa (OpenStreetMap / Nominatim) y se guarda: {"code": "TO", "name": "Torino"}.
 _nominatim_lock = asyncio.Lock()
 _nominatim_last = 0.0
+# Con mucha gente a la vez, la fila (1 por segundo) haria esperar a todos. Si ya hay estas peticiones esperando,
+# no se espera: se responde "sin dato" (las funciones de llamada ya lo aceptan) y la persona sigue sin frenarse.
+NOMINATIM_MAX_QUEUE = int(os.environ.get("NOMINATIM_MAX_QUEUE", "4"))
+_nominatim_waiting = 0
 
 
 async def _nominatim(path: str, params: dict) -> Optional[object]:
-    """Nominatim pide como maximo 1 peticion por segundo: las ponemos en fila."""
+    """Nominatim pide como maximo 1 peticion por segundo: las ponemos en fila (corta, ver NOMINATIM_MAX_QUEUE)."""
+    global _nominatim_waiting
+    if _nominatim_waiting >= NOMINATIM_MAX_QUEUE:
+        logger.warning("nominatim: fila llena (%s), %s sin dato", _nominatim_waiting, path)
+        return None
+    _nominatim_waiting += 1
+    try:
+        return await _nominatim_in_line(path, params)
+    finally:
+        _nominatim_waiting -= 1
+
+
+async def _nominatim_in_line(path: str, params: dict) -> Optional[object]:
     global _nominatim_last
     async with _nominatim_lock:
         wait = 1.05 - (_time.monotonic() - _nominatim_last)
