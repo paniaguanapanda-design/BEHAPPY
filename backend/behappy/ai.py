@@ -42,13 +42,13 @@ def get_gemini():
 # Gemini y Google Maps se pagan por uso. Ademas de los limites por persona, hay un maximo al dia para TODA la app:
 # aunque alguien cree muchas cuentas, no puede gastar mas que esto. Se cambian en Render sin tocar el codigo.
 DAILY_CAPS = {
-    "xai": int(os.environ.get("DAILY_MAX_XAI", "3000")),  # Grok: diagnosis + traducciones (creditos prepagados)
+    "xai": int(os.environ.get("DAILY_MAX_XAI", "1000")),  # Grok: diagnosis + traducciones (creditos prepagados)
     "gemini": int(os.environ.get("DAILY_MAX_GEMINI", "800")),  # Gemini: solo cuando Grok no responde o llega a su tope
     "maps": int(os.environ.get("DAILY_MAX_MAPS", "200")),  # Places + Geocoding (alta de ferreterias)
 }
 # Maximo por hora para toda la app (frena un abuso rapido antes de llegar al tope del dia).
 HOURLY_CAPS = {
-    "xai": int(os.environ.get("HOURLY_MAX_XAI", "1500")),
+    "xai": int(os.environ.get("HOURLY_MAX_XAI", "500")),
     "gemini": int(os.environ.get("HOURLY_MAX_GEMINI", "600")),
 }
 
