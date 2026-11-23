@@ -113,7 +113,24 @@ async def current_user(request: Request) -> dict:
     user = await user_from_token(token)
     if not user:
         raise HTTPException(401, "Not authenticated")
+    await mark_active(user)
     return user
+
+
+async def mark_active(user: dict) -> None:
+    """Apunta que la persona uso la app hoy (para el panel de administracion): una sola escritura por persona y dia."""
+    day = now().strftime("%Y-%m-%d")
+    if user.get("last_seen_day") == day:
+        return
+    try:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_seen_day": day}})
+        await db.activity_days.update_one({"_id": f"{day}:{user['user_id']}"},
+                                          {"$setOnInsert": {"day": day, "user_id": user["user_id"],
+                                                            "role": user.get("role") or "client", "at": now()}},
+                                          upsert=True)
+        user["last_seen_day"] = day
+    except Exception:
+        pass  # contar la actividad nunca debe impedir usar la app
 
 
 REF_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,39}$")

@@ -2,7 +2,7 @@ import os
 import asyncio
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from . import admin, ai, app_reviews, auth, chat, diagnosis, files, geo, marketplace, membership, moderation, pro, push, specialists, storage, stores, web
+from . import admin, ai, app_reviews, auth, chat, diagnosis, files, geo, marketplace, membership, moderation, pro, push, specialists, stats, storage, stores, web
 from .core import CATEGORIES, client, db, logger
 
 
@@ -47,6 +47,8 @@ async def startup():
     asyncio.create_task(web.ensure_stripe_webhook())
     await db.stores.create_index([("location", "2dsphere")])
     await db.specialists.create_index("zone.province.code")
+    await db.activity_days.create_index("day")
+    await db.activity_days.create_index("at", expireAfterSeconds=400 * 86400)  # panel admin: 400 dias
     await db.stores.create_index([("piva", 1), ("cap", 1)])
     await db.specialists.update_many({"document_number": {"$exists": True}}, {"$unset": {"document_number": ""}})
     try:
@@ -84,6 +86,7 @@ app.include_router(geo.router)
 app.include_router(pro.router)
 app.include_router(web.router)
 app.include_router(app_reviews.router)
+app.include_router(stats.router)
 
 _cors = [o.strip() for o in os.environ.get("CORS_ORIGINS", "https://www.be-happyapp.com").split(",") if o.strip()]
 # The installable web app calls the server directly (through Cloudflare), so each visitor keeps their own IP for the
