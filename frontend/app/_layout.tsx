@@ -42,7 +42,6 @@ function Gate() {
 
   useEffect(() => {
     if (loading) return;
-    if ((segments[0] as string) === "admin") return; // admin panel: protected by the admin key, with or without app login
     const onLogin = segments[0] === "login";
     const isWebPreview =
       __DEV__ &&
