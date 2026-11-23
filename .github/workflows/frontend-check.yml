@@ -17,3 +17,5 @@ jobs:
           node-version: 22
       - run: yarn install --frozen-lockfile --ignore-scripts
       - run: npx tsc --noEmit
+      - run: npx expo lint
+      - run: yarn test --ci

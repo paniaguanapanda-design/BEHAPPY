@@ -14,6 +14,7 @@ os.environ["GOOGLE_CLIENT_IDS"] = "test-client"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import server  # noqa: E402
+from behappy import core, geo, main, membership, security, storage  # noqa: E402
 
 def prereg(email, especialidad="idraulica", estado="reservada"):
     return {"nombre": "Mario Rossi", "email": email, "telefono": "+39 333 1234567", "especialidad": especialidad,
@@ -45,21 +46,22 @@ async def fake_place_search(q):
 
 @pytest.fixture(autouse=True)
 async def clean_db(monkeypatch):
-    monkeypatch.setattr(server, "province_at", fake_province_at)
-    monkeypatch.setattr(server, "place_search", fake_place_search)
-    monkeypatch.setattr(server, "S3_BUCKET", None)
-    monkeypatch.setattr(server, "ON_RENDER", False)
+    monkeypatch.setattr(geo, "province_at", fake_province_at)
+    monkeypatch.setattr(geo, "place_search", fake_place_search)
+    monkeypatch.setattr(storage, "S3_BUCKET", None)
+    monkeypatch.setattr(storage, "ON_RENDER", False)
     monkeypatch.setenv("WEB_PROXY_KEY", "test-web-proxy-key")
-    for name in await server.db.list_collection_names():
-        await server.db[name].drop()
-    await server.startup()
-    server._hits.clear()
+    monkeypatch.delenv("XAI_API_KEY", raising=False)  # las pruebas nunca llaman a Grok de verdad
+    for name in await core.db.list_collection_names():
+        await core.db[name].drop()
+    await main.startup()
+    security._hits.clear()
     yield
 
 
 @pytest.fixture
 async def api():
-    transport = httpx.ASGITransport(app=server.app)
+    transport = httpx.ASGITransport(app=main.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
@@ -84,7 +86,7 @@ async def make_profile(api, headers, zone="TO", **extra):
     assert r.status_code == 200, r.text
     if zone:
         name, lat, lng = PROVINCES[zone]
-        await server.db.specialists.update_one({"specialist_id": r.json()["specialist_id"]}, {"$set": {"zone": {
+        await core.db.specialists.update_one({"specialist_id": r.json()["specialist_id"]}, {"$set": {"zone": {
             "lat": lat, "lng": lng, "radius_km": 15, "label": name, "province": {"code": zone, "name": name}}}})
     return r.json()
 
@@ -103,7 +105,7 @@ async def google_login(api, monkeypatch, email):
 
 
 async def test_password_account_gets_free_month_when_creating_profile(api):
-    await server.db[server.PREREG].insert_one(prereg("mario@example.com"))
+    await core.db[membership.PREREG].insert_one(prereg("mario@example.com"))
     h = await register(api, "Mario@Example.com")
     assert (await api.get("/api/membership/me", headers=h)).json()["active"] is False  # aun no es especialista
     spec = await make_profile(api, h)
@@ -111,12 +113,12 @@ async def test_password_account_gets_free_month_when_creating_profile(api):
     m = (await api.get("/api/membership/me", headers=h)).json()
     assert m["active"] and m["source"] == "preregistro"
     assert 29.9 < days_left(m["expires_at"]) <= 30
-    pre = await server.db[server.PREREG].find_one({"email": "mario@example.com"})
+    pre = await core.db[membership.PREREG].find_one({"email": "mario@example.com"})
     assert pre["promo"]["estado"] == "aplicada" and pre["estado"] == "activado"
 
 
 async def test_free_month_only_once(api):
-    await server.db[server.PREREG].insert_one(prereg("once@example.com"))
+    await core.db[membership.PREREG].insert_one(prereg("once@example.com"))
     h = await register(api, "once@example.com")
     await make_profile(api, h)
     first = (await api.get("/api/membership/me", headers=h)).json()["expires_at"]
@@ -126,24 +128,24 @@ async def test_free_month_only_once(api):
 
 
 async def test_password_account_profile_is_not_prefilled(api):
-    await server.db[server.PREREG].insert_one(prereg("victim@example.com"))
+    await core.db[membership.PREREG].insert_one(prereg("victim@example.com"))
     r = await api.post("/api/auth/register", json={"email": "victim@example.com", "password": "secret123", "name": "X"})
     assert r.json()["user"]["specialist_id"] is None
-    assert await server.db.specialists.count_documents({}) == 0
+    assert await core.db.specialists.count_documents({}) == 0
 
 
 async def test_google_signup_creates_profile_with_free_month(api, monkeypatch):
-    await server.db[server.PREREG].insert_one(prereg("luca@example.com", "serrature"))
+    await core.db[membership.PREREG].insert_one(prereg("luca@example.com", "serrature"))
     out = await google_login(api, monkeypatch, "luca@example.com")
     assert out["user"]["role"] == "specialist" and out["user"]["specialist_id"]
-    s = await server.db.specialists.find_one({"user_id": out["user"]["user_id"]})
+    s = await core.db.specialists.find_one({"user_id": out["user"]["user_id"]})
     assert s["categories"] == ["carpentry"] and s["subtrades"] == ["cerrajeria"]
     assert s["phone"] == "+39 333 1234567" and s["name"] == "Mario Rossi"
     assert days_left(s["membership_expires_at"]) > 29.9
 
 
 async def test_google_signup_unmapped_specialty_waits_for_profile(api, monkeypatch):
-    await server.db[server.PREREG].insert_one(prereg("giulia@example.com", "giardinaggio"))
+    await core.db[membership.PREREG].insert_one(prereg("giulia@example.com", "giardinaggio"))
     out = await google_login(api, monkeypatch, "giulia@example.com")
     assert out["user"]["specialist_id"] is None
     h = {"Authorization": f"Bearer {out['session_token']}"}
@@ -158,17 +160,17 @@ async def test_no_prereg_no_free_month(api):
 
 
 async def test_already_claimed_prereg_is_ignored(api):
-    await server.db[server.PREREG].insert_one(prereg("used@example.com", estado="aplicada"))
+    await core.db[membership.PREREG].insert_one(prereg("used@example.com", estado="aplicada"))
     h = await register(api, "used@example.com")
     assert (await make_profile(api, h))["membership_active"] is False
 
 
 async def test_free_month_extends_active_membership(api):
-    await server.db[server.PREREG].insert_one(prereg("paid@example.com"))
+    await core.db[membership.PREREG].insert_one(prereg("paid@example.com"))
     h = await register(api, "paid@example.com")
     uid = (await api.get("/api/auth/me", headers=h)).json()["user_id"]
-    await server.db.memberships.insert_one({"user_id": uid, "plan": "yearly", "source": "revenuecat",
-                                            "expires_at": server.iso(server.now() + timedelta(days=10))})
+    await core.db.memberships.insert_one({"user_id": uid, "plan": "yearly", "source": "revenuecat",
+                                            "expires_at": core.iso(core.now() + timedelta(days=10))})
     await make_profile(api, h)
     m = (await api.get("/api/membership/me", headers=h)).json()
     assert 39.9 < days_left(m["expires_at"]) <= 40 and m["plan"] == "yearly"
@@ -180,8 +182,8 @@ async def test_app_signup_gets_welcome_month_once(api):
     spec = await make_profile(api, h)
     assert spec["membership_active"] is True
     uid = (await api.get("/api/auth/me", headers=h)).json()["user_id"]
-    m = await server.db.memberships.find_one({"user_id": uid})
+    m = await core.db.memberships.find_one({"user_id": uid})
     assert m["source"] == "bienvenida" and 29 <= days_left(m["expires_at"]) <= 30.1
     first = m["expires_at"]
     await api.get("/api/auth/me", headers=h)  # logging in again does not add another month
-    assert (await server.db.memberships.find_one({"user_id": uid}))["expires_at"] == first
+    assert (await core.db.memberships.find_one({"user_id": uid}))["expires_at"] == first

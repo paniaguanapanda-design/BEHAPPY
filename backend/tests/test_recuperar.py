@@ -5,6 +5,7 @@ from datetime import timedelta
 import pytest
 
 from test_preregistro import api, clean_db, register, server  # noqa: F401
+from behappy import core, mail  # noqa: E402
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ def mailbox(monkeypatch):
 
     monkeypatch.setenv("RESEND_API_KEY", "test")
     monkeypatch.setenv("EMAIL_FROM", "Be Happy <no-reply@be-happyapp.com>")
-    monkeypatch.setattr(server, "send_email", fake_send)
+    monkeypatch.setattr(mail, "send_email", fake_send)
     return sent
 
 
@@ -64,7 +65,7 @@ async def test_wrong_code_blocks_after_five_attempts(api, mailbox):
 async def test_expired_code(api, mailbox):
     await register(api, "tarde@example.com")
     await api.post("/api/auth/forgot-password", json={"email": "tarde@example.com"})
-    await server.db.password_resets.update_many({}, {"$set": {"expires_at": server.now() - timedelta(minutes=1)}})
+    await core.db.password_resets.update_many({}, {"$set": {"expires_at": core.now() - timedelta(minutes=1)}})
     r = await api.post("/api/auth/reset-password", json={"email": "tarde@example.com", "code": code_in(mailbox[0]), "new_password": "nueva123"})
     assert r.status_code == 400
 
@@ -72,15 +73,15 @@ async def test_expired_code(api, mailbox):
 async def test_code_is_stored_hashed(api, mailbox):
     await register(api, "hash@example.com")
     await api.post("/api/auth/forgot-password", json={"email": "hash@example.com"})
-    rec = await server.db.password_resets.find_one({})
+    rec = await core.db.password_resets.find_one({})
     assert code_in(mailbox[0]) not in str(rec)
 
 
 async def test_google_account_gets_explanation_not_code(api, mailbox):
-    await server.db.users.insert_one({"user_id": "user_g", "email": "google@example.com", "name": "G", "role": "client"})
+    await core.db.users.insert_one({"user_id": "user_g", "email": "google@example.com", "name": "G", "role": "client"})
     await api.post("/api/auth/forgot-password", json={"email": "google@example.com"})
     assert len(mailbox) == 1 and "Google" in mailbox[0]["text"]
-    assert await server.db.password_resets.count_documents({}) == 0
+    assert await core.db.password_resets.count_documents({}) == 0
 
 
 async def test_too_many_requests_per_email(api, mailbox):

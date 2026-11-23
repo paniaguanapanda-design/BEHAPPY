@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytest
 
 from test_preregistro import api, clean_db, days_left, make_profile, register, server  # noqa: F401
+from behappy import ai, core, membership, storage  # noqa: E402
 
 WEB = {"X-BeHappy-Client": "web", "X-BeHappy-Proxy-Key": "test-web-proxy-key"}
 SPOOFED_WEB = {"X-BeHappy-Client": "web"}
@@ -13,7 +14,7 @@ APP = {"X-BeHappy-Client": "app"}
 async def give_membership(headers_api, h, days=10):
     api = headers_api
     uid = (await api.get("/api/auth/me", headers=h)).json()["user_id"]
-    await server.activate_membership(uid, "monthly", "test", server.now() + timedelta(days=days))
+    await membership.activate_membership(uid, "monthly", "test", core.now() + timedelta(days=days))
 
 
 async def test_profile_photo_is_required(api):
@@ -77,8 +78,8 @@ async def test_list_only_members_with_photo(api):
     await make_profile(api, b, name="Con membresia")
     await give_membership(api, b)
     uid = (await api.get("/api/auth/me", headers=a)).json()["user_id"]
-    await server.db.specialists.insert_one({"specialist_id": "spec_x", "user_id": "user_x", "name": "Sin foto",
-                                            "categories": ["plumbing"], "created_at": server.iso(server.now())})
+    await core.db.specialists.insert_one({"specialist_id": "spec_x", "user_id": "user_x", "name": "Sin foto",
+                                            "categories": ["plumbing"], "created_at": core.iso(core.now())})
     client = await register(api, "c@example.com")
     lst = (await api.get("/api/specialists", headers=client)).json()
     assert [s["name"] for s in lst] == ["Con membresia"]
@@ -118,7 +119,7 @@ async def test_requests_wait_but_contracts_need_membership(api):
 async def test_portfolio_needs_membership(api, monkeypatch):
     async def fake_caption(c):
         return {"es": c, "it": c}
-    monkeypatch.setattr(server, "caption_both", fake_caption)
+    monkeypatch.setattr(ai, "caption_both", fake_caption)
     sh = await register(api, "s3@example.com")
     spec = await make_profile(api, sh)
     img = spec["avatar"].replace("cara", "trabajo")
@@ -131,10 +132,10 @@ async def test_portfolio_needs_membership(api, monkeypatch):
 async def test_avatar_file_visible_to_clients(api):
     sh = await register(api, "s4@example.com")
     spec = await make_profile(api, sh)
-    await server.db.files.insert_one({"storage_path": spec["avatar"], "owner_id": spec["user_id"],
+    await core.db.files.insert_one({"storage_path": spec["avatar"], "owner_id": spec["user_id"],
                                       "content_type": "image/jpeg", "is_deleted": False})
-    server.LOCAL_UPLOAD_DIR.joinpath(spec["avatar"]).parent.mkdir(parents=True, exist_ok=True)
-    server.LOCAL_UPLOAD_DIR.joinpath(spec["avatar"]).write_bytes(b"jpg")
+    storage.LOCAL_UPLOAD_DIR.joinpath(spec["avatar"]).parent.mkdir(parents=True, exist_ok=True)
+    storage.LOCAL_UPLOAD_DIR.joinpath(spec["avatar"]).write_bytes(b"jpg")
     ch = await register(api, "c4@example.com")
     r = await api.get(f"/api/files/{spec['avatar']}", headers=ch)
     assert r.status_code == 200

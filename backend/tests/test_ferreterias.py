@@ -4,6 +4,7 @@ import re
 import pytest
 
 from test_preregistro import api, clean_db, register, server  # noqa: F401
+from behappy import core, mail, stores  # noqa: E402
 
 
 def make_piva(base="0123456789"):
@@ -50,11 +51,11 @@ def world(monkeypatch):
     monkeypatch.setenv("RESEND_API_KEY", "test")
     monkeypatch.setenv("EMAIL_FROM", "Be Happy <no-reply@be-happyapp.com>")
     monkeypatch.delenv("WEB_PROXY_KEY", raising=False)
-    monkeypatch.setattr(server, "send_email", fake_send)
-    monkeypatch.setattr(server, "vies_check", fake_vies)
-    monkeypatch.setattr(server, "places_check", fake_places)
-    monkeypatch.setattr(server, "geocode", fake_geo)
-    server._store_maint_last = 1e18  # el mantenimiento automatico no corre durante las pruebas
+    monkeypatch.setattr(mail, "send_email", fake_send)
+    monkeypatch.setattr(stores, "vies_check", fake_vies)
+    monkeypatch.setattr(stores, "places_check", fake_places)
+    monkeypatch.setattr(stores, "geocode", fake_geo)
+    stores._store_maint_last = 1e18  # el mantenimiento automatico no corre durante las pruebas
     return state
 
 
@@ -78,10 +79,10 @@ async def nearby(api, **params):
 
 
 def test_piva_checksum():
-    assert server.piva_valid(PIVA)
-    assert not server.piva_valid(PIVA[:-1] + str((int(PIVA[-1]) + 1) % 10))
-    assert not server.piva_valid("00000000000")
-    assert not server.piva_valid("123")
+    assert stores.piva_valid(PIVA)
+    assert not stores.piva_valid(PIVA[:-1] + str((int(PIVA[-1]) + 1) % 10))
+    assert not stores.piva_valid("00000000000")
+    assert not stores.piva_valid("123")
 
 
 async def test_all_checks_pass_store_goes_on_map(api, world):
@@ -114,7 +115,7 @@ async def test_not_a_hardware_store_goes_to_review(api, world):
     sid, status = await apply_and_confirm(api, world)
     assert status == "in_review"
     assert await nearby(api) == []
-    s = await server.db.stores.find_one({"store_id": sid})
+    s = await core.db.stores.find_one({"store_id": sid})
     assert s["review_reasons"] == ["google_not_hardware_store"]
 
 
@@ -128,7 +129,7 @@ async def test_vat_in_other_city_goes_to_review(api, world):
     world["vies"] = {"ok": True, "name": "X", "address": "VIA MILANO 1 20121 MILANO MI"}
     sid, status = await apply_and_confirm(api, world)
     assert status == "in_review"
-    assert (await server.db.stores.find_one({"store_id": sid}))["review_reasons"] == ["vies_address_mismatch"]
+    assert (await core.db.stores.find_one({"store_id": sid}))["review_reasons"] == ["vies_address_mismatch"]
 
 
 async def test_invalid_form_rejected(api, world):
@@ -175,7 +176,7 @@ async def test_admin_digest_and_one_click_decision(api, world, monkeypatch):
     world["google"] = {"ok": False, "found": []}
     sid, _ = await apply_and_confirm(api, world)
     monkeypatch.setenv("ADMIN_EMAIL", "admin@be-happyapp.com")
-    await server.store_maintenance(force=True)
+    await stores.store_maintenance(force=True)
     digest = world["mail"][-1]
     assert digest["to"] == "admin@be-happyapp.com" and "Ferramenta Rossi" in digest["text"]
     link = re.search(r"Aprobar: \S*(/api/admin/stores/\S+)", digest["text"]).group(1)
@@ -195,5 +196,5 @@ async def test_unavailable_checks_are_retried(api, world):
     sid, status = await apply_and_confirm(api, world)
     assert status == "in_review"
     world["vies"] = {"ok": True, "name": "X", "address": "VIA ROMA 10 10121 TORINO"}
-    await server.store_maintenance(force=True)
-    assert (await server.db.stores.find_one({"store_id": sid}))["status"] == "approved"
+    await stores.store_maintenance(force=True)
+    assert (await core.db.stores.find_one({"store_id": sid}))["status"] == "approved"

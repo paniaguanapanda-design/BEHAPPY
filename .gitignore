@@ -89,3 +89,5 @@ credentials.json
 uploads_local/
 .emergent/
 .gitconfig
+# graphify (mapa del proyecto generado en local)
+graphify-out/

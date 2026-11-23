@@ -340,7 +340,8 @@ const it: typeof es = {
 
 export type TKey = keyof typeof es;
 const enDict: typeof es = en;
-const dict = { es, it, en: enDict };
+// Exported for the tests (src/i18n.test.ts).
+export const dict = { es, it, en: enDict };
 export const LANGS: Lang[] = ["es", "en", "it"];
 
 // First visit: use the phone/browser language when we have it, otherwise English.

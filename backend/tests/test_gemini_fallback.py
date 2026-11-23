@@ -5,6 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 import server
+import asyncio
+from behappy import ai  # noqa: E402
 
 
 class FakeModels:
@@ -27,33 +29,33 @@ class FakeModels:
 def fake_gemini(monkeypatch):
     aio_models = FakeModels(busy={"gemini-3.8-flash"})
     client = SimpleNamespace(aio=SimpleNamespace(models=aio_models), models=aio_models)
-    monkeypatch.setattr(server, "get_gemini", lambda: client)
-    monkeypatch.setattr(server, "GEMINI_MODEL", "gemini-3.8-flash")
-    monkeypatch.setattr(server, "GEMINI_FALLBACK_MODEL", "")
-    monkeypatch.setitem(server._working_model, "name", None)
-    monkeypatch.setitem(server._busy_model, "until", 0.0)
+    monkeypatch.setattr(ai, "get_gemini", lambda: client)
+    monkeypatch.setattr(ai, "GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.setattr(ai, "GEMINI_FALLBACK_MODEL", "")
+    monkeypatch.setitem(ai._working_model, "name", None)
+    monkeypatch.setitem(ai._busy_model, "until", 0.0)
 
     async def no_sleep(_):
         return None
 
-    monkeypatch.setattr(server.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(asyncio, "sleep", no_sleep)
 
     async def no_spend(_):
         return None
 
-    monkeypatch.setattr(server, "spend_daily", no_spend)
+    monkeypatch.setattr(ai, "spend_daily", no_spend)
     return aio_models
 
 
 async def test_busy_main_model_falls_back_to_lite(fake_gemini):
-    out = await server.gemini_json("hola")
+    out = await ai.gemini_json("hola")
     assert out == {"ok": "gemini-3.8-flash-lite"}
     assert fake_gemini.calls == ["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.8-flash-lite"]
-    assert server._working_model["name"] is None  # busy is temporary: the next scan tries the main model again
+    assert ai._working_model["name"] is None  # busy is temporary: the next scan tries the main model again
 
 
 async def test_next_scan_goes_straight_to_the_model_that_answered(fake_gemini):
-    await server.gemini_json("uno")
+    await ai.gemini_json("uno")
     fake_gemini.calls.clear()
-    assert await server.gemini_json("dos") == {"ok": "gemini-3.8-flash-lite"}
+    assert await ai.gemini_json("dos") == {"ok": "gemini-3.8-flash-lite"}
     assert fake_gemini.calls == ["gemini-3.8-flash-lite"]  # no waiting on the saturated model
