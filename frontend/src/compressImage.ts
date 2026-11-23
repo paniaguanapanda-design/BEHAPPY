@@ -13,7 +13,7 @@ export async function compressToBase64(uri: string, width?: number, height?: num
     ctx.resize({ height: MAX_SIDE });
   }
   const img = await ctx.renderAsync();
-  const res = await img.saveAsync({ compress: 0.6, format: SaveFormat.JPEG, base64: true });
+  const res = await img.saveAsync({ compress: 0.8, format: SaveFormat.JPEG, base64: true });
   if (!res.base64) throw new Error("Image compression failed");
   return res.base64.replace(/^data:image\/\w+;base64,/, "");
 }

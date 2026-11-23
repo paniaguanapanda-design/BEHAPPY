@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
-import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -12,8 +12,11 @@ import { takePendingScanNote, useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 import { Button } from "@/src/ui";
 import { useToast } from "@/src/toast";
+import { upgradeWebCamera } from "@/src/cameraWeb";
 
 const RETICLE = 270;
+// Time the camera needs after it starts to settle exposure and focus: a photo taken before comes out blurry.
+const FOCUS_SETTLE_MS = 700;
 
 // A beam of light sweeping up and down the frame while the camera is live.
 function ScanLine({ color }: { color: string }) {
@@ -59,12 +62,30 @@ export default function Scan() {
   const [note] = useState(takePendingScanNote);
   const showCamera = !shot && !analyzing;
   const breathe = useBreathe();
+  const [ready, setReady] = useState(false);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (settle.current) clearTimeout(settle.current);
+  }, []);
+  // Safety net: if a camera never reports "ready", the shutter still turns on so the user is never stuck.
+  useEffect(() => {
+    if (!showCamera || !perm?.granted) return;
+    const h = setTimeout(() => setReady(true), 2500);
+    return () => clearTimeout(h);
+  }, [showCamera, perm?.granted]);
+
+  const onCameraReady = () => {
+    if (Platform.OS === "web") void upgradeWebCamera(); // the browser starts at 640x480: ask for Full HD + focus
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => setReady(true), FOCUS_SETTLE_MS);
+  };
 
   const capture = async () => {
-    if (analyzing || shot) return;
+    if (analyzing || shot || !ready) return;
     try {
-      const pic = await cam.current?.takePictureAsync({ quality: 0.7, shutterSound: false });
+      const pic = await cam.current?.takePictureAsync({ quality: 0.85, shutterSound: false });
       if (pic?.uri) {
+        setReady(false); // the camera turns off; it is ready again when it comes back
         setShot(pic.uri); // congela la foto y apaga la camara mientras la IA analiza
         const ok = await run(pic.uri, pic.width, pic.height, true, note);
         if (!ok) setShot(null); // si fallo, vuelve la camara
@@ -120,7 +141,7 @@ export default function Scan() {
       {shot ? (
         <Image source={{ uri: shot }} style={styles.abs} contentFit="cover" />
       ) : showCamera ? (
-        <CameraView ref={cam} style={styles.abs} facing="back" />
+        <CameraView ref={cam} style={styles.abs} facing="back" onCameraReady={onCameraReady} />
       ) : null}
       <View style={styles.reticleWrap} pointerEvents="none">
         <View style={styles.reticle}>
@@ -138,7 +159,14 @@ export default function Scan() {
           <Ionicons name="images" size={26} color={colors.onSurfaceInverse} />
         </Pressable>
         <Animated.View style={breathe}>
-          <Pressable testID="capture-button" accessibilityRole="button" accessibilityLabel={t("scan_cta")} onPress={capture} style={({ pressed }) => [styles.shutter, pressed && { transform: [{ scale: 0.9 }] }]}>
+          <Pressable
+            testID="capture-button"
+            accessibilityRole="button"
+            accessibilityLabel={t("scan_cta")}
+            accessibilityState={{ disabled: !ready }}
+            onPress={capture}
+            style={({ pressed }) => [styles.shutter, !ready && { opacity: 0.5 }, pressed && ready && { transform: [{ scale: 0.9 }] }]}
+          >
             <View style={styles.shutterInner} />
           </Pressable>
         </Animated.View>
@@ -163,7 +191,7 @@ const useStyles = makeStyles((c) => ({
   tr: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 20 },
   bl: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 20 },
   br: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 20 },
-  hint: { color: c.onSurfaceInverse, fontSize: 14, fontWeight: "800", backgroundColor: c.scrim, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, overflow: "hidden" },
+  hint: { maxWidth: "86%", textAlign: "center", color: c.onSurfaceInverse, fontSize: 14, fontWeight: "800", backgroundColor: c.scrim, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, overflow: "hidden" },
   controls: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingTop: 24 },
   side: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: c.scrim },
   shutter: { width: 84, height: 84, borderRadius: 42, borderWidth: 5, borderColor: c.onSurfaceInverse, alignItems: "center", justifyContent: "center" },
