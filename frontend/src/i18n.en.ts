@@ -70,7 +70,7 @@ export const en = {
   camera_perm_title: "Use the camera to diagnose", camera_perm_text: "We need the camera to photograph the problem so the AI can analyse it.",
   allow_camera: "Allow camera", open_settings: "Open settings", use_gallery: "Use gallery",
   not_now: "Not now", cam_blocked_text: "Camera access is turned off. Turn it on in settings to scan problems.",
-  frame_hint: "Fit the problem inside the frame",
+  frame_hint: "Frame the problem and hold the phone still, about 30 cm away",
   request_note_title: "Tell us what you need",
   request_note_placeholder: "Describe the fault or the change you'd like to make at home...",
   request_without_photo: "Find a specialist without a photo",
