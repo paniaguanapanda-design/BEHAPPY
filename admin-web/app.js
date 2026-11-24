@@ -104,6 +104,37 @@ function table() {
   return `<div class="card"><table><thead><tr>${cols.map(([h]) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+// Aviso de una sola vía: el administrador escribe, el especialista lo recibe por correo y/o notificación.
+let notice = null; // { sid, subject, text, email, push, busy, msg, err }
+const noticeHistory = {}; // specialist_id -> avisos enviados
+
+function noticeForm(p) {
+  const hist = noticeHistory[p.specialist_id] || [];
+  const list = hist.length
+    ? `<ul class="hist">${hist.slice(0, 5).map((x) => `<li>${esc(fmtDay(x.created_at))} · ${esc(x.subject)}${x.read_at ? " · leído" : ""}</li>`).join("")}</ul>`
+    : `<p class="muted">Todavía no se le ha enviado ningún aviso.</p>`;
+  return `
+    <form class="notice" id="notice-form" data-sid="${esc(p.specialist_id)}">
+      <input id="n-subject" maxlength="120" placeholder="Asunto" aria-label="Asunto" value="${esc(notice.subject)}" required>
+      <textarea id="n-text" rows="4" maxlength="2000" placeholder="Mensaje" aria-label="Mensaje" required>${esc(notice.text)}</textarea>
+      <label class="check"><input type="checkbox" id="n-email" ${notice.email ? "checked" : ""}> Enviar por correo</label>
+      <label class="check"><input type="checkbox" id="n-push" ${notice.push ? "checked" : ""}> Notificación en el móvil</label>
+      ${notice.msg ? `<p class="${notice.err ? "error" : "muted"}">${esc(notice.msg)}</p>` : ""}
+      <div class="row">
+        <button class="btn" ${notice.busy ? "disabled" : ""}>${notice.busy ? "Enviando…" : "Enviar aviso"}</button>
+        <button type="button" class="link" id="n-cancel">Cancelar</button>
+      </div>
+      <p class="muted">Últimos avisos:</p>${list}
+    </form>`;
+}
+
+async function loadNotices(sid) {
+  try {
+    const res = await fetch(`/api/admin/specialists/${encodeURIComponent(sid)}/notices`, { headers: { "X-Admin-Token": token }, cache: "no-store" });
+    if (res.ok) { noticeHistory[sid] = await res.json(); render(); }
+  } catch { /* sin historial por ahora */ }
+}
+
 // Lista de especialistas: nombre, oficios, contacto y estado. Pensada para comprobar quién se ha inscrito.
 function peopleList() {
   if (!people) return "";
@@ -115,6 +146,8 @@ function peopleList() {
         <span class="muted">${esc((p.categories || []).map((c) => CAT[c] || c).join(", "))}</span></div>
       <div class="meta">${p.phone ? `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : ""}${p.email ? ` · ${esc(p.email)}` : ""}</div>
       <div class="meta">${esc(status[p.verification_status] || p.verification_status)} · ${p.membership_active ? "membresía activa" : "sin membresía"} · alta ${esc(fmtDay(p.created_at || "0000-00-00"))}</div>
+      <button class="link" data-notice="${esc(p.specialist_id)}" aria-expanded="${notice?.sid === p.specialist_id}">${notice?.sid === p.specialist_id ? "▴ Cerrar" : "✉ Enviar aviso"}</button>
+      ${notice?.sid === p.specialist_id ? noticeForm(p) : ""}
     </li>`).join("");
   return `<div class="card"><h3>Inscritos (${people.length})</h3><ul class="people">${rows}</ul></div>`;
 }
@@ -171,6 +204,7 @@ function render() {
 
 // --- events ---
 app.addEventListener("submit", async (e) => {
+  if (e.target.id === "notice-form") return sendNotice(e);
   if (e.target.id !== "login") return;
   e.preventDefault();
   const t = document.getElementById("key").value.trim();
@@ -181,10 +215,45 @@ app.addEventListener("submit", async (e) => {
     render();
   }
 });
+async function sendNotice(e) {
+  e.preventDefault();
+  const sid = e.target.dataset.sid;
+  const p = (people || []).find((x) => x.specialist_id === sid);
+  const subject = document.getElementById("n-subject").value.trim();
+  const text = document.getElementById("n-text").value.trim();
+  const channels = [document.getElementById("n-email").checked && "email", document.getElementById("n-push").checked && "push"].filter(Boolean);
+  if (!subject || !text) return;
+  if (!channels.length) { notice = { ...notice, msg: "Elige correo, notificación o ambos.", err: true }; return render(); }
+  const to = p?.name || "este especialista";
+  if (!confirm(`¿Enviar este aviso a ${to}${channels.includes("email") && p?.email ? ` (${p.email})` : ""}?`)) return;
+  notice = { ...notice, subject, text, email: channels.includes("email"), push: channels.includes("push"), busy: true, msg: "", err: false };
+  render();
+  try {
+    const res = await fetch(`/api/admin/specialists/${encodeURIComponent(sid)}/notice`, {
+      method: "POST", headers: { "X-Admin-Token": token, "Content-Type": "application/json" }, body: JSON.stringify({ subject, text, channels }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.detail || `No se pudo enviar (${res.status})`);
+    const note = j.email === false && channels.includes("email") ? " Sin correo: no tiene email registrado." : "";
+    notice = { sid, subject: "", text: "", email: true, push: true, busy: false, msg: `Aviso enviado.${note}`, err: false };
+    await loadNotices(sid);
+  } catch (err) {
+    notice = { ...notice, busy: false, msg: err.message === "Failed to fetch" ? "Sin conexión con el servidor" : err.message, err: true };
+    render();
+  }
+}
+
 app.addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.dataset.chart) { selected[b.dataset.chart] = Number(b.dataset.i); render(); }
+  if (b.dataset.notice) {
+    const sid = b.dataset.notice;
+    if (notice?.sid === sid) notice = null;
+    else { notice = { sid, subject: "", text: "", email: true, push: true, busy: false, msg: "", err: false }; loadNotices(sid); }
+    render();
+  }
+  else if (b.id === "n-cancel") { notice = null; render(); }
+  else if (b.dataset.chart) { selected[b.dataset.chart] = Number(b.dataset.i); render(); }
   else if (b.id === "refresh") load(token);
   else if (b.id === "logout") { token = ""; data = null; error = ""; save(""); render(); }
   else if (b.id === "table") { showTable = !showTable; render(); }
@@ -192,7 +261,8 @@ app.addEventListener("click", async (e) => {
 });
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; render(); });
 addEventListener("appinstalled", () => { installEvent = null; render(); });
-setInterval(() => { if (token && document.visibilityState === "visible") load(token); }, 60_000);
+// No se recarga mientras se escribe un aviso, para no borrar lo escrito.
+setInterval(() => { if (token && !notice && document.visibilityState === "visible") load(token); }, 60_000);
 document.addEventListener("visibilitychange", () => { if (token && document.visibilityState === "visible" && data) load(token); });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

@@ -87,6 +87,15 @@ input[type=password] { min-height: 48px; padding: 0 12px; border-radius: 10px; b
 .person .meta { font-size: 12px; color: var(--ink-2); margin-top: 2px; word-break: break-all; }
 .person a { color: var(--brand); }
 
+.person > .link { margin-top: 6px; padding: 6px 0; }
+.notice { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px; border-radius: 12px; background: var(--tint); }
+.notice input[type=text], .notice input:not([type]), .notice textarea { font: inherit; font-size: 15px; color: var(--ink); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.notice textarea { resize: vertical; }
+.notice .check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.notice .row { display: flex; align-items: center; gap: 14px; }
+.notice .row .link { margin-top: 0; }
+.hist { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-2); }
+
 .link { margin-top: 20px; border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 13px; padding: 4px; cursor: pointer; }
 table { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
 th, td { padding: 5px 2px; text-align: right; border-bottom: 1px solid var(--border); color: var(--ink-2); }
