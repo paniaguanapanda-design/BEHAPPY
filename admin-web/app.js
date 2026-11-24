@@ -6,6 +6,7 @@ const CAT = { plumbing: "Fontanería", electrical: "Electricidad", hvac: "Climat
 const app = document.getElementById("app");
 let token = read();
 let data = null;
+let people = null; // lista de especialistas (/api/admin/specialists)
 let loading = false;
 let error = "";
 let showTable = false;
@@ -27,6 +28,11 @@ async function load(t) {
     if (res.status === 403) throw new Error("Clave incorrecta");
     if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
     data = await res.json();
+    // La lista es aparte: si falla, el resto del panel sigue funcionando.
+    try {
+      const r2 = await fetch("/api/admin/specialists", { headers: { "X-Admin-Token": t }, cache: "no-store" });
+      if (r2.ok) people = await r2.json();
+    } catch { /* sin lista por ahora */ }
     return true;
   } catch (e) {
     error = e.message === "Failed to fetch" ? "Sin conexión con el servidor" : e.message;
@@ -98,6 +104,21 @@ function table() {
   return `<div class="card"><table><thead><tr>${cols.map(([h]) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+// Lista de especialistas: nombre, oficios, contacto y estado. Pensada para comprobar quién se ha inscrito.
+function peopleList() {
+  if (!people) return "";
+  if (!people.length) return `<div class="card"><p class="muted">Todavía no hay especialistas inscritos.</p></div>`;
+  const status = { verified: "Verificado", in_review: "En revisión", rejected: "Rechazado", none: "Sin verificar" };
+  const rows = people.map((p) => `
+    <li class="person">
+      <div class="who"><b>${esc(p.name || "(sin nombre)")}</b>
+        <span class="muted">${esc((p.categories || []).map((c) => CAT[c] || c).join(", "))}</span></div>
+      <div class="meta">${p.phone ? `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : ""}${p.email ? ` · ${esc(p.email)}` : ""}</div>
+      <div class="meta">${esc(status[p.verification_status] || p.verification_status)} · ${p.membership_active ? "membresía activa" : "sin membresía"} · alta ${esc(fmtDay(p.created_at || "0000-00-00"))}</div>
+    </li>`).join("");
+  return `<div class="card"><h3>Inscritos (${people.length})</h3><ul class="people">${rows}</ul></div>`;
+}
+
 function dashboardView() {
   const s = data;
   const updated = s ? new Date(s.generated_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -130,6 +151,7 @@ function dashboardView() {
 
     <h2>Especialistas</h2>
     ${tiles([["Registrados", s.specialists.total], ["Membresía activa", s.specialists.active_membership], ["Verificados", s.specialists.verified], ["Verificación pendiente", s.specialists.in_review]])}
+    ${peopleList()}
 
     <h2>Solicitudes y chats</h2>
     ${tiles([["Solicitudes abiertas", s.marketplace.requests_open], ["Solicitudes 30 días", s.marketplace.requests_30d], ["Presupuestos 30 días", s.marketplace.quotes_30d],

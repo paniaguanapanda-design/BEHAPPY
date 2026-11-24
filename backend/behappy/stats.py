@@ -28,6 +28,24 @@ async def _count(coll: str, match: Optional[dict] = None) -> int:
     return await db[coll].count_documents(match or {})
 
 
+@router.get("/admin/specialists")
+async def admin_specialists(x_admin_token: Optional[str] = Header(None)):
+    """Lista de especialistas inscritos (los mas nuevos primero) para el panel. Sin fotos ni documentos."""
+    admin.require_admin(x_admin_token)
+    items = await db.specialists.find({}, {"_id": 0, "specialist_id": 1, "user_id": 1, "name": 1, "categories": 1,
+                                           "phone": 1, "verification_status": 1, "membership_expires_at": 1,
+                                           "created_at": 1}) \
+        .sort("created_at", -1).to_list(500)
+    emails = {u["user_id"]: u.get("email") async for u in db.users.find(
+        {"user_id": {"$in": [it["user_id"] for it in items]}}, {"_id": 0, "user_id": 1, "email": 1})}
+    now_iso = now().isoformat()
+    return [{"specialist_id": it["specialist_id"], "name": it.get("name") or "", "categories": it.get("categories") or [],
+             "phone": it.get("phone") or "", "email": emails.get(it["user_id"]) or "",
+             "verification_status": it.get("verification_status") or "none",
+             "membership_active": (it.get("membership_expires_at") or "") > now_iso,
+             "created_at": it.get("created_at") or ""} for it in items]
+
+
 @router.get("/admin/stats")
 async def admin_stats(days: int = 30, x_admin_token: Optional[str] = Header(None)):
     """Numeros de la app para el panel /admin. Solo con la clave de administrador (cabecera X-Admin-Token)."""
