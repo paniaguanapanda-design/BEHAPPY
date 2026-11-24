@@ -60,6 +60,20 @@ async def test_activity_is_written_once_per_person_and_day(api):
     assert len(rows) == 1 and rows[0]["day"] == core.now().strftime("%Y-%m-%d")
 
 
+async def test_lists_specialists_for_the_panel(api):
+    h = await register(api, "esp@example.com")
+    await make_profile(api, h)
+    r = await api.get("/api/admin/specialists")
+    assert r.status_code == 403
+    r = await api.get("/api/admin/specialists", headers=ADMIN)
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["email"] == "esp@example.com" and row["name"] and row["categories"]
+    assert "verification_document" not in row and "avatar" not in row and "document_number" not in row
+
+
 async def test_days_parameter_is_limited(api):
     r = await api.get("/api/admin/stats?days=500", headers=ADMIN)
     assert len(r.json()["series"]) == 90
