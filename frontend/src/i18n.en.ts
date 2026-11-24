@@ -10,6 +10,7 @@ export const en = {
   zone_pick_day: "Choose at least one day", zone_bad_hours: "The end time must be after the start time",
   quick_replies: "Quick replies", quick_replies_count: "{n} saved messages", replies_note: "Tap them in the chat to write your answer in a second. You can edit it before sending.",
   replies_add_ph: "New quick reply", replies_add: "Add", replies_empty: "No saved replies.", replies_max: "Maximum 10 replies", delete: "Delete",
+  notices_title: "BE HAPPY notices", notices_unread: "{n} unread", notices_none: "None", notices_empty: "You have no BE HAPPY notices yet.", notices_note: "Messages from the BE HAPPY team. For reading only.",
   alerts_title: "New client alerts", alerts_on: "On", alerts_off: "Off", alerts_all: "all your trades", alerts_none: "no trade", only: "only",
   alerts_switch: "Get alerts on your phone", alerts_switch_sub: "When a client writes to you or someone in your area makes a diagnosis in your trade.",
   alerts_which: "For which trades", alerts_examples: "Example alerts", alerts_ex_message: "New client 2 km away: «Dripping tap in the kitchen»",

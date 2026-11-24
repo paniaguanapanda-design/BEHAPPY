@@ -2,7 +2,7 @@ import os
 import asyncio
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from . import admin, ai, app_reviews, auth, chat, diagnosis, files, geo, marketplace, membership, moderation, pro, push, specialists, stats, storage, stores, web
+from . import admin, ai, app_reviews, auth, chat, diagnosis, files, geo, marketplace, membership, moderation, notices, pro, push, specialists, stats, storage, stores, web
 from .core import CATEGORIES, client, db, logger
 
 
@@ -87,6 +87,7 @@ app.include_router(pro.router)
 app.include_router(web.router)
 app.include_router(app_reviews.router)
 app.include_router(stats.router)
+app.include_router(notices.router)
 
 _cors = [o.strip() for o in os.environ.get("CORS_ORIGINS", "https://www.be-happyapp.com").split(",") if o.strip()]
 # The installable web app calls the server directly (through Cloudflare), so each visitor keeps their own IP for the

@@ -72,6 +72,7 @@ export default function Profile() {
   const spec = useQuery({ queryKey: ["specialist-me"], queryFn: () => api<any>("/specialists/me"), enabled: !!isSpec });
   const settings = useQuery({ queryKey: ["pro-settings", lang], queryFn: () => api<any>(`/specialists/me/settings?lang=${lang}`), enabled: !!isSpec });
   const stats = useQuery({ queryKey: ["pro-stats", "7"], queryFn: () => api<any>("/specialists/me/stats?days=7"), enabled: !!isSpec });
+  const notices = useQuery({ queryKey: ["pro-notices"], queryFn: () => api<any>("/specialists/me/notices"), enabled: !!isSpec });
   const seenStats = useSeen("pro_stats");
   const seenZone = useSeen("pro_zone");
   const seenReplies = useSeen("pro_replies");
@@ -260,6 +261,14 @@ export default function Profile() {
                 sub={st ? (st.alerts.enabled ? `${t("alerts_on")} · ${alertsCats(st, t)}` : t("alerts_off")) : undefined}
                 isNew={seenAlerts.isNew}
                 onPress={() => router.push("/pro-alerts")}
+              />
+              <View style={styles.sep} />
+              <Row
+                testID="notices-row"
+                icon="mail-outline" emoji="📨"
+                title={t("notices_title")}
+                sub={notices.data ? (notices.data.unread ? t("notices_unread").replace("{n}", String(notices.data.unread)) : t("notices_none")) : undefined}
+                onPress={() => router.push("/pro-notices")}
               />
             </View>
             <View style={styles.group}>
