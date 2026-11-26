@@ -4,9 +4,11 @@ import type { PropsWithChildren } from "react";
 
 export default function Root({ children }: PropsWithChildren) {
   return (
-    <html lang="es" style={{ height: "100%" }}>
+    <html lang="es" translate="no" style={{ height: "100%" }}>
       <head>
         <meta charSet="utf-8" />
+        {/* Sin esto, Chrome traduce la app a su idioma y pisa el idioma elegido dentro de la app (p. ej. "IT" aparece como "ÉL") */}
+        <meta name="google" content="notranslate" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"
