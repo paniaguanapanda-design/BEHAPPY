@@ -175,12 +175,40 @@ def _next_month_iso() -> str:
     return iso(n.replace(year=year, month=month, day=1, hour=0, minute=0, second=0, microsecond=0))
 
 
-async def quota_limit(user: dict) -> int:
+# Bono por amigos: por cada REFERRAL_STEP amigos invitados que ya hayan hecho un diagnostico (no fallido),
+# 1 diagnostico extra este mes. Tope: REFERRAL_MAX_BONUS extra al mes.
+REFERRAL_STEP = int(os.environ.get("BONO_AMIGOS_CADA", "3"))
+REFERRAL_MAX_BONUS = int(os.environ.get("BONO_AMIGOS_MAX", "5"))
+
+
+async def invited_active(user: dict) -> int:
+    """Cuantos amigos invitados con su enlace han hecho al menos un diagnostico (sin contar los fallidos)."""
+    code = user.get("codigo_invitacion")
+    if not code:
+        code = ((await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "codigo_invitacion": 1})) or {}).get("codigo_invitacion")
+    if not code:
+        return 0
+    ids = [u["user_id"] for u in await db.users.find({"referido_por": code}, {"_id": 0, "user_id": 1}).to_list(5000)]
+    if not ids:
+        return 0
+    return len(await db.diagnoses.distinct("user_id", {"user_id": {"$in": ids}, "status": {"$ne": "failed"}}))
+
+
+def referral_bonus_for(activos: int) -> int:
+    return min(activos // REFERRAL_STEP, REFERRAL_MAX_BONUS)
+
+
+async def base_limit(user: dict) -> int:
     if user.get("role") == "specialist":
         from . import membership  # import tardio: membership depende de otros modulos
         if (await membership.membership_payload(user["user_id"])).get("active"):
             return QUOTA_SPECIALIST
     return QUOTA_CLIENT
+
+
+async def quota_limit(user: dict) -> int:
+    """Limite del mes: base (cliente o especialista) + bono por amigos activos."""
+    return await base_limit(user) + referral_bonus_for(await invited_active(user))
 
 
 async def reserve_quota(user: dict) -> str:
@@ -213,10 +241,17 @@ async def release_quota(key: Optional[str]) -> None:
 async def diagnosis_quota(request: Request):
     """Cuantos diagnosticos le quedan a la persona este mes. Va antes de /diagnoses/{id} para no confundirse."""
     user = await current_user(request)
-    limit = await quota_limit(user)
+    base = await base_limit(user)
+    activos = await invited_active(user)
+    bonus = referral_bonus_for(activos)
+    limit = base + bonus
     doc = await db.quota_diag.find_one({"_id": _quota_key(user["user_id"])}, {"_id": 0, "used": 1}) or {}
     used = max(0, int(doc.get("used") or 0))
-    return {"limit": limit, "used": used, "remaining": max(0, limit - used), "resets_at": _next_month_iso()}
+    # Cuantos amigos faltan para el siguiente diagnostico extra (0 si ya se llego al tope)
+    faltan = 0 if bonus >= REFERRAL_MAX_BONUS else REFERRAL_STEP - (activos % REFERRAL_STEP)
+    return {"limit": limit, "base": base, "bonus": bonus, "used": used, "remaining": max(0, limit - used),
+            "resets_at": _next_month_iso(),
+            "amigos": {"activos": activos, "faltan": faltan, "cada": REFERRAL_STEP, "tope": REFERRAL_MAX_BONUS}}
 
 
 @router.post("/diagnose")
