@@ -1,11 +1,13 @@
 """Diagnostico de averias con IA: prompt, reglas de seguridad y endpoints /diagnose."""
 import io
+import os
 import asyncio
 import re
 import json
 import base64
 import uuid
 from fastapi import HTTPException, Request, APIRouter
+from pymongo.errors import DuplicateKeyError
 from fastapi.concurrency import run_in_threadpool
 from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
@@ -157,6 +159,66 @@ def parse_json(text: str) -> dict:
     return json.loads(m.group(0))
 
 
+# ---------------- Cuota mensual de diagnosticos ----------------
+# Clientes: 10 al mes. Especialistas con membresia activa: 30. Se cambian en Render (variables de entorno).
+QUOTA_CLIENT = int(os.environ.get("QUOTA_DIAG_CLIENTE_MES", "10"))
+QUOTA_SPECIALIST = int(os.environ.get("QUOTA_DIAG_ESPECIALISTA_MES", "30"))
+
+
+def _quota_key(user_id: str) -> str:
+    return f"{user_id}:{now().strftime('%Y-%m')}"
+
+
+def _next_month_iso() -> str:
+    n = now()
+    year, month = (n.year + 1, 1) if n.month == 12 else (n.year, n.month + 1)
+    return iso(n.replace(year=year, month=month, day=1, hour=0, minute=0, second=0, microsecond=0))
+
+
+async def quota_limit(user: dict) -> int:
+    if user.get("role") == "specialist":
+        from . import membership  # import tardio: membership depende de otros modulos
+        if (await membership.membership_payload(user["user_id"])).get("active"):
+            return QUOTA_SPECIALIST
+    return QUOTA_CLIENT
+
+
+async def reserve_quota(user: dict) -> str:
+    """Reserva un diagnostico del mes de forma atomica: dos peticiones a la vez no pueden pasar el limite."""
+    limit = await quota_limit(user)
+    key = _quota_key(user["user_id"])
+    take = {"_id": key, "used": {"$lt": limit}}
+    if (await db.quota_diag.update_one(take, {"$inc": {"used": 1}})).modified_count == 1:
+        return key
+    try:
+        await db.quota_diag.insert_one({"_id": key, "used": 1})  # primer diagnostico del mes
+        return key
+    except DuplicateKeyError:  # otra peticion lo creo a la vez: reintenta la reserva normal
+        if (await db.quota_diag.update_one(take, {"$inc": {"used": 1}})).modified_count == 1:
+            return key
+    raise HTTPException(429, "monthly_limit")
+
+
+async def release_quota(key: Optional[str]) -> None:
+    """Devuelve el diagnostico si no llego a analizarse (fallo de la IA, tope diario o error al guardar)."""
+    if not key:
+        return
+    try:
+        await db.quota_diag.update_one({"_id": key, "used": {"$gt": 0}}, {"$inc": {"used": -1}})
+    except Exception as e:
+        logger.warning("no se pudo devolver el diagnostico %s: %s", key, e)
+
+
+@router.get("/diagnoses/quota")
+async def diagnosis_quota(request: Request):
+    """Cuantos diagnosticos le quedan a la persona este mes. Va antes de /diagnoses/{id} para no confundirse."""
+    user = await current_user(request)
+    limit = await quota_limit(user)
+    doc = await db.quota_diag.find_one({"_id": _quota_key(user["user_id"])}, {"_id": 0, "used": 1}) or {}
+    used = max(0, int(doc.get("used") or 0))
+    return {"limit": limit, "used": used, "remaining": max(0, limit - used), "resets_at": _next_month_iso()}
+
+
 @router.post("/diagnose")
 async def diagnose(body: DiagnoseIn, request: Request):
     user = await current_user(request)
@@ -164,6 +226,10 @@ async def diagnose(body: DiagnoseIn, request: Request):
         raise HTTPException(422, "Add a photo or describe the work you need")
     rate_limit(f"diag-min:{user['user_id']}", 8, 60)
     rate_limit(f"diag-day:{user['user_id']}", 40, 86400)
+    # Comprobacion rapida antes de guardar la foto; la reserva exacta se hace mas abajo, de forma atomica.
+    used_now = int(((await db.quota_diag.find_one({"_id": _quota_key(user["user_id"])}, {"_id": 0, "used": 1})) or {}).get("used") or 0)
+    if used_now >= await quota_limit(user):
+        raise HTTPException(429, "monthly_limit")
     raw = None
     b64 = None
     if body.image_base64:
@@ -194,28 +260,36 @@ async def diagnose(body: DiagnoseIn, request: Request):
         asyncio.create_task(_store())  # don't make the user wait for storage
     # Answer at once with the id; Gemini (15-40 s) runs in the background and the app polls GET /diagnoses/{id}.
     # Waiting here made proxies (Vercel, Render) cut the request with 502/503.
+    quota_key = await reserve_quota(user)  # 429 si ya no quedan diagnosticos este mes
     doc = {"diagnosis_id": new_id("diag"), "user_id": user["user_id"], "image_path": image_path, "status": "processing",
            "language": body.language, "created_at": iso(now())}
     if body.note and body.note.strip():
         doc["user_note"] = body.note.strip()
-    await db.diagnoses.insert_one(doc)
+    try:
+        await db.diagnoses.insert_one(doc)
+    except Exception:
+        await release_quota(quota_key)
+        raise
     doc.pop("_id", None)
     prompt = DIAG_PROMPT.format(lang=lang, cats=CATEGORIES, extra=extra)
-    asyncio.create_task(_run_diagnosis(doc["diagnosis_id"], prompt, b64, user, body.lat, body.lng))
+    asyncio.create_task(_run_diagnosis(doc["diagnosis_id"], prompt, b64, user, body.lat, body.lng, quota_key))
     return {"diagnosis_id": doc["diagnosis_id"], "status": "processing"}
 
 
 async def _run_diagnosis(diagnosis_id: str, prompt: str, b64: Optional[str], user: dict,
-                         lat: Optional[float], lng: Optional[float]) -> None:
-    """Background part of POST /diagnose: ask the AI (Grok, or Gemini as backup), then mark the diagnosis ready or failed."""
+                         lat: Optional[float], lng: Optional[float], quota_key: Optional[str] = None) -> None:
+    """Background part of POST /diagnose: ask the AI (Grok, or Gemini as backup), then mark the diagnosis ready or failed.
+    Si la IA no llega a analizar la foto, el diagnostico no cuenta para la cuota mensual."""
     try:
         result = normalize_diagnosis(await ai.ai_json(prompt, b64))
     except ai.DailyLimitReached:
+        await release_quota(quota_key)
         await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {
             "status": "failed", "error": "Oggi il servizio è molto richiesto: riprova domani. / Hoy hay mucha demanda: inténtalo mañana."}})
         return
     except Exception as e:
         logger.exception("diagnose failed: %s", e)
+        await release_quota(quota_key)
         await db.diagnoses.update_one({"diagnosis_id": diagnosis_id}, {"$set": {
             "status": "failed", "error": "AI analysis failed, please retry"}})
         return

@@ -57,7 +57,8 @@ export default function Scan() {
   const toast = useToast();
   const [perm, requestPerm] = useCameraPermissions();
   const cam = useRef<CameraView>(null);
-  const { analyzing, run, pickFromGallery } = useDiagnose();
+  const { analyzing, run, pickFromGallery, quota } = useDiagnose();
+  const noQuota = !!quota && quota.remaining <= 0;
   const [shot, setShot] = useState<string | null>(null);
   const [note] = useState(takePendingScanNote);
   const showCamera = !shot && !analyzing;
@@ -152,6 +153,13 @@ export default function Scan() {
           {showCamera ? <ScanLine color={colors.sun} /> : null}
         </View>
         <Text style={styles.hint}>{t("frame_hint")}</Text>
+        {quota && (
+          <Text testID="scan-quota" style={styles.quota}>
+            {noQuota
+              ? t("quota_reached_short")
+              : t("quota_left").replace("{n}", String(quota.remaining)).replace("{limit}", String(quota.limit))}
+          </Text>
+        )}
       </View>
       {close}
       <View style={[styles.controls, { paddingBottom: insets.bottom + 24 }]}>
@@ -163,9 +171,9 @@ export default function Scan() {
             testID="capture-button"
             accessibilityRole="button"
             accessibilityLabel={t("scan_cta")}
-            accessibilityState={{ disabled: !ready }}
+            accessibilityState={{ disabled: !ready || noQuota }}
             onPress={capture}
-            style={({ pressed }) => [styles.shutter, !ready && { opacity: 0.5 }, pressed && ready && { transform: [{ scale: 0.9 }] }]}
+            style={({ pressed }) => [styles.shutter, (!ready || noQuota) && { opacity: 0.5 }, pressed && ready && !noQuota && { transform: [{ scale: 0.9 }] }]}
           >
             <View style={styles.shutterInner} />
           </Pressable>
@@ -192,6 +200,7 @@ const useStyles = makeStyles((c) => ({
   bl: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 20 },
   br: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 20 },
   hint: { maxWidth: "86%", textAlign: "center", color: c.onSurfaceInverse, fontSize: 14, fontWeight: "800", backgroundColor: c.scrim, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, overflow: "hidden" },
+  quota: { maxWidth: "86%", textAlign: "center", marginTop: 6, color: c.onSurfaceInverse, fontSize: 13, fontWeight: "700", backgroundColor: c.scrim, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 14, overflow: "hidden" },
   controls: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingTop: 24 },
   side: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: c.scrim },
   shutter: { width: 84, height: 84, borderRadius: 42, borderWidth: 5, borderColor: c.onSurfaceInverse, alignItems: "center", justifyContent: "center" },
