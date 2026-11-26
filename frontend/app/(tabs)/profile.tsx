@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
+import { useToast } from "@/src/toast";
 import { useSeen } from "@/src/seen";
 import { fmtMinutes, NewBadge, scheduleText } from "@/src/proUi";
 import { usesNativeTabs } from "@/src/navigation";
@@ -67,6 +68,17 @@ export default function Profile() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { t, lang } = useI18n();
+  const toast = useToast();
+
+  // Enlace personal de invitacion: quien se registre con el queda contado a tu nombre en el panel de referidos.
+  const inviteFriends = async () => {
+    try {
+      const { url } = await api<{ url: string }>("/auth/invite");
+      await Share.share({ message: t("invite_text").replace("{url}", url) });
+    } catch (e: any) {
+      toast(e?.message || t("error_generic"), "error");
+    }
+  };
   const isSpec = !!(user?.role === "specialist" && user.specialist_id);
   const membership = useMembership(!!isSpec);
   const spec = useQuery({ queryKey: ["specialist-me"], queryFn: () => api<any>("/specialists/me"), enabled: !!isSpec });
@@ -228,6 +240,10 @@ export default function Profile() {
             </Pressable>
           </View>
         )}
+
+        <View style={styles.group}>
+          <Row testID="invite-friends-row" icon="gift-outline" emoji="🎁" title={t("invite_row")} onPress={inviteFriends} />
+        </View>
 
         {isSpec ? (
           <>

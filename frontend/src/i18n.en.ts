@@ -96,7 +96,7 @@ export const en = {
   messages_title: "Messages", no_messages: "No messages yet. Contact a specialist to start.",
   type_message: "Type a message…", service_request: "Service request",
   profile_title: "Profile", language: "Language", become_specialist: "Sign up as a specialist", become_specialist_sub: "Create your professional profile and get clients",
-  my_specialist_profile: "My professional profile", edit_specialist: "Edit professional profile", my_requests: "Service requests", logout: "Sign out",
+  my_specialist_profile: "My professional profile", invite_row: "Invite friends", invite_text: "I recommend BE HAPPY: take a photo of a home problem and the AI tells you what's wrong and how to fix it. Join here: {url}", spec_share: "Share my profile", spec_share_text: "You can book me for jobs through BE HAPPY: {url}",edit_specialist: "Edit professional profile", my_requests: "Service requests", logout: "Sign out",
   role_client: "Client", role_specialist: "Specialist",
   form_title: "Specialist profile", category: "Specialty", bio: "Introduction", phone: "Phone", city: "City",
   years_exp: "Years of experience", rate: "Rate (e.g. 30 EUR/h)", change_photo: "Change photo", add_photo: "Add photo",

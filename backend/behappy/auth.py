@@ -1,5 +1,6 @@
 """Registro, login (correo y Google), cierre de sesion, recuperar contrasena y borrar cuenta."""
 import os
+import secrets
 import re
 import bcrypt
 import jwt
@@ -115,6 +116,29 @@ async def me(request: Request):
     user = await current_user(request)
     await membership.start_web_promo(user, request)
     return public_user(user)
+
+
+INVITE_BASE = "https://app.be-happyapp.com/?ref="
+
+
+@router.get("/auth/invite")
+async def invite(request: Request):
+    """Codigo de invitacion propio de la persona: quien se registre con su enlace queda contado en su nombre
+    (panel admin > referidos). Se crea la primera vez y ya no cambia."""
+    user = await current_user(request)
+    code = user.get("codigo_invitacion")
+    if not code:
+        code = "u" + secrets.token_hex(4)
+        for _ in range(5):  # colision practicamente imposible, pero se comprueba
+            if not await db.users.find_one({"codigo_invitacion": code}, {"_id": 1}):
+                break
+            code = "u" + secrets.token_hex(4)
+        # Solo se escribe si aun no tiene codigo (dos peticiones a la vez no cambian el enlace).
+        await db.users.update_one({"user_id": user["user_id"], "codigo_invitacion": {"$exists": False}},
+                                  {"$set": {"codigo_invitacion": code}})
+        saved = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "codigo_invitacion": 1}) or {}
+        code = saved.get("codigo_invitacion") or code
+    return {"code": code, "url": INVITE_BASE + code}
 
 
 @router.post("/auth/logout")
