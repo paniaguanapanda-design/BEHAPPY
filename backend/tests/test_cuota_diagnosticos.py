@@ -70,3 +70,75 @@ async def test_specialist_with_membership_gets_larger_limit(api, monkeypatch):
 async def test_quota_endpoint_requires_login(api):
     r = await api.get("/api/diagnoses/quota")
     assert r.status_code in (401, 403)
+
+
+# ---------------- Bono por amigos ----------------
+from test_referidos import signup  # noqa: E402
+
+
+async def invite_code(api, headers):
+    return (await api.get("/api/auth/invite", headers=headers)).json()["code"]
+
+
+async def friend_diagnoses(api, code, email):
+    fh, _ = await signup(api, email, ref=code)
+    r = await api.post("/api/diagnose", headers=fh, json={"note": "pintar", "language": "es"})
+    assert r.status_code == 200, r.text
+    return fh, r.json()["diagnosis_id"]
+
+
+async def test_bonus_one_per_three_active_friends(api, monkeypatch):
+    monkeypatch.setattr(diagnosis, "QUOTA_CLIENT", 1)
+    monkeypatch.setattr(diagnosis, "REFERRAL_STEP", 3)
+    monkeypatch.setattr(diagnosis, "REFERRAL_MAX_BONUS", 5)
+    async def fake(prompt, image_b64=None):
+        return GOOD
+    monkeypatch.setattr(ai, "gemini_json", fake)
+    inviter, _ = await signup(api, "invitador@example.com")
+    code = await invite_code(api, inviter)
+
+    for i in range(2):
+        await friend_diagnoses(api, code, f"amigo{i}@example.com")
+    q = (await api.get("/api/diagnoses/quota", headers=inviter)).json()
+    assert q["bonus"] == 0 and q["limit"] == 1 and q["amigos"]["activos"] == 2 and q["amigos"]["faltan"] == 1
+
+    await friend_diagnoses(api, code, "amigo2@example.com")
+    q = (await api.get("/api/diagnoses/quota", headers=inviter)).json()
+    assert q["bonus"] == 1 and q["limit"] == 2 and q["remaining"] == 2
+    assert q["base"] == 1 and q["amigos"]["activos"] == 3
+
+
+async def test_bonus_respects_monthly_cap(api, monkeypatch):
+    monkeypatch.setattr(diagnosis, "QUOTA_CLIENT", 1)
+    monkeypatch.setattr(diagnosis, "REFERRAL_STEP", 1)
+    monkeypatch.setattr(diagnosis, "REFERRAL_MAX_BONUS", 2)
+    async def fake(prompt, image_b64=None):
+        return GOOD
+    monkeypatch.setattr(ai, "gemini_json", fake)
+    inviter, _ = await signup(api, "tope-invitador@example.com")
+    code = await invite_code(api, inviter)
+    for i in range(4):
+        await friend_diagnoses(api, code, f"tope{i}@example.com")
+    q = (await api.get("/api/diagnoses/quota", headers=inviter)).json()
+    assert q["bonus"] == 2 and q["limit"] == 3
+    assert q["amigos"]["faltan"] == 0  # ya en el tope
+
+
+async def test_friend_with_failed_diagnosis_does_not_count(api, monkeypatch):
+    monkeypatch.setattr(diagnosis, "QUOTA_CLIENT", 1)
+    monkeypatch.setattr(diagnosis, "REFERRAL_STEP", 1)
+    async def broken(prompt, image_b64=None):
+        raise RuntimeError("IA caida")
+    monkeypatch.setattr(ai, "gemini_json", broken)
+    inviter, _ = await signup(api, "fallo-invitador@example.com")
+    code = await invite_code(api, inviter)
+    fh, diag_id = await friend_diagnoses(api, code, "fallo-amigo@example.com")
+    assert (await wait_done(api, fh, diag_id))["status"] == "failed"
+    q = (await api.get("/api/diagnoses/quota", headers=inviter)).json()
+    assert q["amigos"]["activos"] == 0 and q["bonus"] == 0
+
+
+async def test_no_invite_code_means_no_bonus(api):
+    h, _ = await signup(api, "sin-codigo@example.com")
+    q = (await api.get("/api/diagnoses/quota", headers=h)).json()
+    assert q["bonus"] == 0 and q["amigos"]["activos"] == 0

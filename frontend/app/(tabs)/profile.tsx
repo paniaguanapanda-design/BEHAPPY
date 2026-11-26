@@ -69,6 +69,14 @@ export default function Profile() {
   const { user, logout } = useAuth();
   const { t, lang } = useI18n();
   const toast = useToast();
+  // Progreso del bono por amigos (misma consulta que la pantalla de escanear)
+  const inviteQuota = useQuery({ queryKey: ["diag-quota"], queryFn: () => api<any>("/diagnoses/quota") });
+  const amigos = inviteQuota.data?.amigos;
+  const inviteSub = amigos
+    ? amigos.faltan === 0
+      ? t("invite_max")
+      : t("invite_progress").replace("{a}", String(amigos.activos)).replace("{f}", String(amigos.faltan))
+    : undefined;
 
   // Enlace personal de invitacion: quien se registre con el queda contado a tu nombre en el panel de referidos.
   const inviteFriends = async () => {
@@ -242,7 +250,7 @@ export default function Profile() {
         )}
 
         <View style={styles.group}>
-          <Row testID="invite-friends-row" icon="gift-outline" emoji="🎁" title={t("invite_row")} onPress={inviteFriends} />
+          <Row testID="invite-friends-row" icon="gift-outline" emoji="🎁" title={t("invite_row")} sub={inviteSub} onPress={inviteFriends} />
         </View>
 
         {isSpec ? (
