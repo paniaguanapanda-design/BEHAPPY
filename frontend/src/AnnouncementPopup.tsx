@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/src/api";
+import { API, api } from "@/src/api";
+import { Image } from "expo-image";
 import { useI18n } from "@/src/i18n";
 import { makeStyles, useTheme } from "@/src/theme";
 
-export type Announcement = { announcement_id: string; type: string; title: string; text: string; link?: string | null; ends_at: string; seen: boolean };
+export type Announcement = { announcement_id: string; type: string; title: string; text: string; link?: string | null; ends_at?: string | null; permanente?: boolean; image_url?: string | null; seen: boolean };
 
 // Como mucho un pop-up por sesion de la app: no se molesta a la persona en cada pantalla.
 let shownThisSession = false;
@@ -47,6 +48,9 @@ export function AnnouncementPopup() {
       <View style={styles.backdrop}>
         <View style={styles.card} testID="announcement-popup">
           <Text style={styles.kind}>{t(`announce_${current.type}`)}</Text>
+          {current.image_url ? (
+            <Image testID="announcement-image" source={{ uri: `${API}/announcements/${current.announcement_id}/imagen` }} style={styles.image} contentFit="cover" />
+          ) : null}
           <Text style={styles.title}>{current.title}</Text>
           <ScrollView style={{ maxHeight: 280 }}>
             <Text style={styles.text}>{current.text}</Text>
@@ -72,6 +76,7 @@ const useStyles = makeStyles((c) => ({
   card: { backgroundColor: c.surfaceSecondary, borderRadius: 24, padding: 22, gap: 10 },
   kind: { color: c.brandPrimary, fontWeight: "800", fontSize: 13, textTransform: "uppercase" },
   title: { color: c.onSurface, fontWeight: "800", fontSize: 22 },
+  image: { width: "100%", height: 180, borderRadius: 14 },
   text: { color: c.onSurfaceSecondary, fontSize: 15, lineHeight: 22 },
   actions: { gap: 10, marginTop: 8 },
   btn: { borderRadius: 14, paddingVertical: 14, alignItems: "center" },

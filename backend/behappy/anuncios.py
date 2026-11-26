@@ -1,13 +1,17 @@
 """Novedades, promociones, eventos y sorteos de BE HAPPY. El administrador publica; la app muestra un pop-up
 una sola vez por anuncio y lista las novedades en el perfil. Audiencia: todos, clientes o especialistas."""
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from . import storage
 from .admin import require_admin
-from .core import db, iso, new_id, now
+from .core import APP_NAME, db, iso, new_id, now
 from .security import current_user
 
 router = APIRouter(prefix="/api")
@@ -15,6 +19,8 @@ router = APIRouter(prefix="/api")
 TYPES = ("novedad", "promocion", "evento", "sorteo")
 AUDIENCES = ("todos", "clientes", "especialistas")
 MAX_SHOWN = 3  # como mucho 3 pop-ups pendientes a la vez
+NEW_DAYS = 30  # "solo nuevos": personas registradas en los ultimos 30 dias
+MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
 
 class AnuncioIn(BaseModel):
@@ -24,7 +30,10 @@ class AnuncioIn(BaseModel):
     audience: str = Field(default="todos")
     link: Optional[str] = Field(default=None, max_length=500)
     starts_at: Optional[str] = None  # ISO 8601; por defecto ahora
-    ends_at: Optional[str] = None    # por defecto, 30 dias
+    ends_at: Optional[str] = None    # por defecto, 30 dias (si es temporal)
+    permanente: bool = False         # sin fecha de fin: sigue hasta que lo quites
+    solo_nuevos: bool = False        # solo personas registradas en los ultimos 30 dias
+    imagen_base64: Optional[str] = Field(default=None, max_length=3_000_000)  # JPEG o PNG, data URL o base64
 
 
 def _parse(value: Optional[str], default: datetime) -> str:
@@ -39,6 +48,22 @@ def _parse(value: Optional[str], default: datetime) -> str:
     return iso(d)
 
 
+def _image(data_b64: str) -> tuple:
+    """Devuelve (bytes, content_type, extension) si es JPEG o PNG y pesa lo razonable."""
+    raw = data_b64.split(",", 1)[-1] if data_b64.startswith("data:") else data_b64
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except Exception:
+        raise HTTPException(422, "La imagen no es valida")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(422, "La imagen pesa mas de 2 MB")
+    if data[:3] == b"\xff\xd8\xff":
+        return data, "image/jpeg", "jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return data, "image/png", "png"
+    raise HTTPException(422, "Solo JPEG o PNG")
+
+
 def _check(body: AnuncioIn) -> dict:
     if body.type not in TYPES:
         raise HTTPException(422, "Tipo no valido")
@@ -50,17 +75,21 @@ def _check(body: AnuncioIn) -> dict:
     if body.type == "sorteo" and not link:
         raise HTTPException(422, "Un sorteo necesita el enlace a sus bases legales")
     start = _parse(body.starts_at, now())
-    end = _parse(body.ends_at, now() + timedelta(days=30))
-    if end <= start:
+    end = None if body.permanente else _parse(body.ends_at, now() + timedelta(days=30))
+    if end and end <= start:
         raise HTTPException(422, "La fecha de fin debe ser posterior al inicio")
-    return {"announcement_id": new_id("anu"), "type": body.type, "title": body.title.strip(),
-            "text": body.text.strip(), "audience": body.audience, "link": link,
-            "starts_at": start, "ends_at": end, "active": True, "created_at": iso(now())}
+    doc = {"announcement_id": new_id("anu"), "type": body.type, "title": body.title.strip(),
+           "text": body.text.strip(), "audience": body.audience, "link": link, "solo_nuevos": bool(body.solo_nuevos),
+           "starts_at": start, "ends_at": end, "active": True, "created_at": iso(now())}
+    if body.imagen_base64:
+        doc["_imagen"] = _image(body.imagen_base64)  # se guarda en el almacenamiento, no en la base de datos
+    return doc
 
 
 def _public(a: dict, seen: bool = False) -> dict:
     return {"announcement_id": a["announcement_id"], "type": a["type"], "title": a["title"], "text": a["text"],
-            "link": a.get("link"), "ends_at": a["ends_at"], "seen": seen}
+            "link": a.get("link"), "ends_at": a.get("ends_at"), "permanente": a.get("ends_at") is None, "seen": seen,
+            "image_url": f"/api/announcements/{a['announcement_id']}/imagen" if a.get("image_path") else None}
 
 
 def _audience_for(user: dict) -> List[str]:
@@ -69,9 +98,16 @@ def _audience_for(user: dict) -> List[str]:
 
 async def _active_for(user: dict) -> List[dict]:
     t = iso(now())
-    return await db.announcements.find(
-        {"active": True, "starts_at": {"$lte": t}, "ends_at": {"$gte": t}, "audience": {"$in": _audience_for(user)}},
-        {"_id": 0}).sort("starts_at", -1).to_list(100)
+    items = await db.announcements.find(
+        {"active": True, "starts_at": {"$lte": t}, "audience": {"$in": _audience_for(user)},
+         "$or": [{"ends_at": None}, {"ends_at": {"$gte": t}}]},
+        {"_id": 0, "_imagen": 0}).sort("starts_at", -1).to_list(100)
+    cutoff = iso(now() - timedelta(days=NEW_DAYS))
+    created = user.get("created_at") or ""
+    if not created:
+        created = ((await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "created_at": 1})) or {}).get("created_at") or ""
+    es_nueva = bool(created) and created >= cutoff
+    return [a for a in items if not a.get("solo_nuevos") or es_nueva]
 
 
 # ---------------- Para la app ----------------
@@ -117,9 +153,28 @@ async def mark_seen(aid: str, request: Request):
 async def create_announcement(body: AnuncioIn, x_admin_token: Optional[str] = Header(default=None)):
     require_admin(x_admin_token)
     doc = _check(body)
+    img = doc.pop("_imagen", None)
+    if img:
+        data, ctype, ext = img
+        path = f"{APP_NAME}/anuncios/{doc['announcement_id']}.{ext}"
+        await run_in_threadpool(storage.put_object, path, data, ctype)
+        doc["image_path"], doc["image_type"] = path, ctype
     await db.announcements.insert_one(dict(doc))
     doc.pop("_id", None)
     return doc
+
+
+@router.get("/announcements/{aid}/imagen")
+async def announcement_image(aid: str):
+    """Foto del anuncio. Publica: es la misma foto que ve cualquiera que abra el anuncio."""
+    a = await db.announcements.find_one({"announcement_id": aid, "image_path": {"$exists": True}}, {"_id": 0, "image_path": 1, "image_type": 1})
+    if not a:
+        raise HTTPException(404, "Sin imagen")
+    try:
+        data, _ = await run_in_threadpool(storage.get_object, a["image_path"])
+    except Exception:
+        raise HTTPException(404, "Sin imagen")
+    return Response(content=data, media_type=a.get("image_type") or "image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 
 @router.get("/admin/anuncios")

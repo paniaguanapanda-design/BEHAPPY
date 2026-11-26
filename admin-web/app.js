@@ -11,6 +11,10 @@ let loading = false;
 let error = "";
 let showTable = false;
 let installEvent = null;
+let anuncios = null; // anuncios publicados (/api/admin/anuncios)
+let annMsg = "";
+let annErr = false;
+let annBusy = false;
 const selected = {}; // chart id -> selected day index
 
 function read() { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } }
@@ -33,6 +37,10 @@ async function load(t) {
       const r2 = await fetch("/api/admin/specialists", { headers: { "X-Admin-Token": t }, cache: "no-store" });
       if (r2.ok) people = await r2.json();
     } catch { /* sin lista por ahora */ }
+    try {
+      const r3 = await fetch("/api/admin/anuncios", { headers: { "X-Admin-Token": t }, cache: "no-store" });
+      if (r3.ok) anuncios = (await r3.json()).items;
+    } catch { /* sin anuncios por ahora */ }
     return true;
   } catch (e) {
     error = e.message === "Failed to fetch" ? "Sin conexión con el servidor" : e.message;
@@ -195,7 +203,123 @@ function dashboardView() {
     ${tiles([["En el mapa", s.stores.on_map], ["Pendientes de revisión", s.stores.pending]])}
 
     <button class="link" id="table" aria-expanded="${showTable}">${showTable ? "▴ Ocultar tabla" : "☰ Ver los datos en tabla"}</button>
+    ${anunciosView()}
     ${showTable ? table() : ""}`;
+}
+
+// --- anuncios: novedades, promociones, eventos o sorteos para todos, clientes o especialistas ---
+function anunciosView() {
+  const list = (anuncios || []).filter((a) => a.active);
+  const cuando = (a) => (a.ends_at ? `hasta ${new Date(a.ends_at).toLocaleDateString("es-ES")}` : "permanente");
+  return `
+    <h2>Anuncios</h2>
+    <form id="ann-form" class="card" style="display:grid;gap:10px">
+      <label>Tipo
+        <select id="a-type">
+          <option value="novedad">Novedad</option><option value="promocion">Promoción</option>
+          <option value="evento">Evento</option><option value="sorteo">Sorteo (necesita bases legales)</option>
+        </select>
+      </label>
+      <label>Título <input id="a-title" maxlength="100" required></label>
+      <label>Texto <textarea id="a-text" rows="4" maxlength="500" required></textarea></label>
+      <label>Para
+        <select id="a-audience">
+          <option value="todos">Todos</option><option value="clientes">Solo clientes</option><option value="especialistas">Solo especialistas</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="a-nuevos"> Solo personas nuevas (registradas en los últimos 30 días)</label>
+      <fieldset style="border:0;padding:0;display:grid;gap:6px">
+        <label><input type="radio" name="a-dur" value="perm" checked> Permanente (hasta que lo quites)</label>
+        <label><input type="radio" name="a-dur" value="temp"> Temporal, hasta
+          <input type="datetime-local" id="a-fin" disabled></label>
+      </fieldset>
+      <label>Enlace (opcional, https://) <input id="a-link" placeholder="https://..."></label>
+      <label>Foto (opcional, JPEG o PNG) <input type="file" id="a-foto" accept="image/jpeg,image/png"></label>
+      <button type="submit" id="a-enviar" ${annBusy ? "disabled" : ""}>${annBusy ? "Publicando…" : "Publicar anuncio"}</button>
+      ${annMsg ? `<p class="${annErr ? "error" : "note"}" role="status">${esc(annMsg)}</p>` : ""}
+    </form>
+    <h3>Publicados ahora</h3>
+    ${list.length ? `<ul>${list.map((a) => `
+      <li style="margin:8px 0">
+        <strong>${esc(a.title)}</strong> · ${esc(a.type)} · ${esc(a.audience)}${a.solo_nuevos ? " · solo nuevos" : ""} · ${cuando(a)}
+        <button class="link" data-desactivar="${esc(a.announcement_id)}">Quitar</button>
+      </li>`).join("")}</ul>` : `<p class="muted">No hay anuncios activos.</p>`}`;
+}
+
+// Foto: se reduce en el navegador (máx. 1280 px, JPEG) para que pese poco.
+function fotoComprimida(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("No se pudo leer la foto")); };
+    img.src = url;
+  });
+}
+
+async function refrescarAnuncios() {
+  try {
+    const r = await fetch("/api/admin/anuncios", { headers: { "X-Admin-Token": token }, cache: "no-store" });
+    if (r.ok) anuncios = (await r.json()).items;
+  } catch { /* sin conexión: queda la lista anterior */ }
+}
+
+async function publicarAnuncio(e) {
+  e.preventDefault();
+  const v = (id) => document.getElementById(id).value.trim();
+  const body = {
+    type: v("a-type"), title: v("a-title"), text: v("a-text"), audience: v("a-audience"),
+    solo_nuevos: document.getElementById("a-nuevos").checked,
+    permanente: document.querySelector('input[name="a-dur"]:checked').value === "perm",
+  };
+  const fin = v("a-fin");
+  if (!body.permanente) {
+    if (!fin) { annMsg = "Pon la fecha de fin o elige permanente."; annErr = true; return render(); }
+    body.ends_at = new Date(fin).toISOString();
+  }
+  if (v("a-link")) body.link = v("a-link");
+  const file = document.getElementById("a-foto").files[0];
+  if (file) {
+    try { body.imagen_base64 = await fotoComprimida(file); }
+    catch (err) { annMsg = err.message; annErr = true; return render(); }
+  }
+  if (body.type === "sorteo" && !body.link) { annMsg = "Un sorteo necesita el enlace a sus bases legales."; annErr = true; return render(); }
+  if (!confirm(`¿Publicar «${body.title}» para ${body.audience}${body.permanente ? " (permanente)" : ""}?`)) return;
+  annBusy = true; annMsg = ""; render();
+  try {
+    const res = await fetch("/api/admin/anuncios", {
+      method: "POST", headers: { "X-Admin-Token": token, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(Array.isArray(j.detail) ? j.detail.map((d) => d.msg).join(". ") : (j.detail || `No se pudo publicar (${res.status})`));
+    annMsg = "Anuncio publicado. Aparecerá en la app a quien corresponda."; annErr = false;
+    await refrescarAnuncios();
+  } catch (err) {
+    annMsg = err.message === "Failed to fetch" ? "Sin conexión con el servidor" : err.message; annErr = true;
+  } finally {
+    annBusy = false;
+    render();
+  }
+}
+
+async function quitarAnuncio(aid) {
+  if (!confirm("¿Quitar este anuncio? Deja de aparecer en la app.")) return;
+  try {
+    const res = await fetch(`/api/admin/anuncios/${encodeURIComponent(aid)}/desactivar`, { method: "POST", headers: { "X-Admin-Token": token } });
+    if (!res.ok) throw new Error(`No se pudo quitar (${res.status})`);
+    annMsg = "Anuncio quitado."; annErr = false;
+    await refrescarAnuncios();
+  } catch (err) {
+    annMsg = err.message; annErr = true;
+  }
+  render();
 }
 
 function render() {
@@ -203,8 +327,12 @@ function render() {
 }
 
 // --- events ---
+app.addEventListener("change", (e) => {
+  if (e.target.name === "a-dur") document.getElementById("a-fin").disabled = e.target.value === "perm";
+});
 app.addEventListener("submit", async (e) => {
   if (e.target.id === "notice-form") return sendNotice(e);
+  if (e.target.id === "ann-form") return publicarAnuncio(e);
   if (e.target.id !== "login") return;
   e.preventDefault();
   const t = document.getElementById("key").value.trim();
@@ -246,6 +374,7 @@ async function sendNotice(e) {
 app.addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  if (b.dataset.desactivar) return quitarAnuncio(b.dataset.desactivar);
   if (b.dataset.notice) {
     const sid = b.dataset.notice;
     if (notice?.sid === sid) notice = null;
@@ -262,8 +391,10 @@ app.addEventListener("click", async (e) => {
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; render(); });
 addEventListener("appinstalled", () => { installEvent = null; render(); });
 // No se recarga mientras se escribe un aviso, para no borrar lo escrito.
-setInterval(() => { if (token && !notice && document.visibilityState === "visible") load(token); }, 60_000);
-document.addEventListener("visibilitychange", () => { if (token && document.visibilityState === "visible" && data) load(token); });
+// Tampoco mientras hay un anuncio a medio escribir.
+const escribiendo = () => !!notice || !!document.getElementById("ann-form");
+setInterval(() => { if (token && !escribiendo() && document.visibilityState === "visible") load(token); }, 60_000);
+document.addEventListener("visibilitychange", () => { if (token && document.visibilityState === "visible" && data && !escribiendo()) load(token); });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 if (token) load(token); else render();
