@@ -6,12 +6,32 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://app.be-happyapp.com/pro</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://app.be-happyapp.com/login</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://app.be-happyapp.com/pro</loc>
+    <loc>https://app.be-happyapp.com/ayuda/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://app.be-happyapp.com/ayuda/gotera-en-el-techo.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://app.be-happyapp.com/ayuda/grifo-que-gotea.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://app.be-happyapp.com/ayuda/cerradura-no-gira.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
