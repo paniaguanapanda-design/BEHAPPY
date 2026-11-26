@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx expo export -p web",
+  "buildCommand": "npx expo export -p web && node scripts/inject-head.mjs",
   "outputDirectory": "dist",
   "rewrites": [
     {
