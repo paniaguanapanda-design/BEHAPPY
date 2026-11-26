@@ -12,8 +12,39 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
-        <title>BE HAPPY</title>
-        <meta name="description" content="Fotografía un problema de casa y la IA te dice qué pasa y cómo arreglarlo." />
+        <title>BE HAPPY: diagnostica problemas del hogar con una foto</title>
+        <meta name="description" content="Fotografía un problema de casa y la IA te dice qué pasa y cómo arreglarlo. Conecta con especialistas cerca de ti." />
+        <meta name="robots" content="index, follow" />
+        <link rel="canonical" href="https://app.be-happyapp.com/" />
+        {/* Redes sociales y vista previa de enlaces (WhatsApp, Facebook, LinkedIn...) */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="BE HAPPY" />
+        <meta property="og:locale" content="es_ES" />
+        <meta property="og:title" content="BE HAPPY: diagnostica problemas del hogar con una foto" />
+        <meta property="og:description" content="Fotografía un problema de casa y la IA te dice qué pasa y cómo arreglarlo." />
+        <meta property="og:url" content="https://app.be-happyapp.com/" />
+        <meta property="og:image" content="https://app.be-happyapp.com/icons/icon-512.png" />
+        <meta name="twitter:card" content="summary" />
+        <meta name="twitter:title" content="BE HAPPY: diagnostica problemas del hogar con una foto" />
+        <meta name="twitter:description" content="Fotografía un problema de casa y la IA te dice qué pasa y cómo arreglarlo." />
+        <meta name="twitter:image" content="https://app.be-happyapp.com/icons/icon-512.png" />
+        {/* Datos estructurados para buscadores */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "MobileApplication",
+              name: "BE HAPPY",
+              description: "Fotografía un problema de casa y la IA te dice qué pasa y cómo arreglarlo.",
+              applicationCategory: "LifestyleApplication",
+              operatingSystem: "Android, Web",
+              inLanguage: "es",
+              url: "https://app.be-happyapp.com/",
+              offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+            }),
+          }}
+        />
         {/* Installable web app (PWA) */}
         <link rel="manifest" href="/manifest.webmanifest" />
         <meta name="theme-color" content="#0B5C55" />
