@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
@@ -251,6 +251,8 @@ export default function Profile() {
 
         <View style={styles.group}>
           <Row testID="invite-friends-row" icon="gift-outline" emoji="🎁" title={t("invite_row")} sub={inviteSub} onPress={inviteFriends} />
+          <View style={styles.sep} />
+          <Row testID="news-row" icon="megaphone-outline" emoji="📣" title={t("news_title")} onPress={() => router.push("/novedades" as Href)} />
         </View>
 
         {isSpec ? (
