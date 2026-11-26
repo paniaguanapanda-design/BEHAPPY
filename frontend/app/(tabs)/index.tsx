@@ -13,6 +13,7 @@ import { setPendingScanNote, useDiagnose } from "@/src/useDiagnose";
 import { AnalyzingOverlay } from "@/src/AnalyzingOverlay";
 import { InstallPrompt } from "@/src/InstallPrompt";
 import { BouncyIcon, Button } from "@/src/ui";
+import { AnnouncementPopup } from "@/src/AnnouncementPopup";
 
 export default function Home() {
   const styles = useStyles();
@@ -29,6 +30,7 @@ export default function Home() {
 
   return (
     <View style={styles.root}>
+      <AnnouncementPopup />
       <ScrollView contentContainerStyle={{ paddingBottom: bottomChrome + 24 }}>
         <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
           <View style={styles.headerRow}>
