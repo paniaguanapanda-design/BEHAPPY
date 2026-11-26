@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "@/src/api";
 import { useI18n } from "@/src/i18n";
@@ -21,16 +22,30 @@ export function takePendingScanNote() {
   return note;
 }
 
+export type DiagnoseQuota = { limit: number; used: number; remaining: number; resets_at: string };
+
 export function useDiagnose() {
   const [analyzing, setAnalyzing] = useState(false);
   const router = useRouter();
   const { lang, t } = useI18n();
   const toast = useToast();
+  // Cuota mensual: cuantos diagnosticos le quedan a la persona (ver backend, /diagnoses/quota).
+  const quotaQuery = useQuery({ queryKey: ["diag-quota"], queryFn: () => api<DiagnoseQuota>("/diagnoses/quota") });
+  const quota = quotaQuery.data;
+
+  const quotaReachedMessage = (q: DiagnoseQuota) => {
+    const date = new Date(q.resets_at).toLocaleDateString(lang === "it" ? "it-IT" : lang === "en" ? "en-GB" : "es-ES", { day: "numeric", month: "long" });
+    return t("quota_reached").replace("{limit}", String(q.limit)).replace("{date}", date);
+  };
 
   const run = async (uri: string | null, width?: number, height?: number, replace = false, note?: string): Promise<boolean> => {
     const description = note?.trim();
     if (!uri && !description) {
       toast(t("request_note_required"), "error");
+      return false;
+    }
+    if (quota && quota.remaining <= 0) {
+      toast(quotaReachedMessage(quota), "error");
       return false;
     }
     setAnalyzing(true);
@@ -46,12 +61,19 @@ export function useDiagnose() {
       if (uri) localPhotos[d.diagnosis_id] = uri;
       // The server answers at once with the id and analyses in the background; the diagnosis screen polls it.
       queryClient.invalidateQueries({ queryKey: ["diagnoses"] });
+      queryClient.invalidateQueries({ queryKey: ["diag-quota"] });
       const target = { pathname: "/diagnosis/[id]" as const, params: { id: d.diagnosis_id } };
       if (replace) router.replace(target);
       else router.push(target);
       return true;
     } catch (e: any) {
-      toast(e?.message || t("error_generic"), "error");
+      if (e?.message === "monthly_limit") {
+        // El servidor ya no deja: refresca la cuota y explica cuando se renueva.
+        const fresh = await quotaQuery.refetch();
+        toast(fresh.data ? quotaReachedMessage(fresh.data) : t("quota_reached_short"), "error");
+      } else {
+        toast(e?.message || t("error_generic"), "error");
+      }
       return false;
     } finally {
       setAnalyzing(false);
@@ -65,5 +87,5 @@ export function useDiagnose() {
     return false;
   };
 
-  return { analyzing, run, pickFromGallery };
+  return { analyzing, run, pickFromGallery, quota };
 }
