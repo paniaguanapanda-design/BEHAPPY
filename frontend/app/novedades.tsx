@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api } from "@/src/api";
+import { API, api } from "@/src/api";
+import { Image } from "expo-image";
 import { useI18n } from "@/src/i18n";
 import { makeStyles, useTheme } from "@/src/theme";
 import type { Announcement } from "@/src/AnnouncementPopup";
@@ -34,6 +35,7 @@ export default function Novedades() {
         ) : (
           items.map((a) => (
             <Pressable key={a.announcement_id} testID={`news-item-${a.announcement_id}`} onPress={() => a.link && Linking.openURL(a.link)} style={styles.card}>
+              {a.image_url ? <Image source={{ uri: `${API}/announcements/${a.announcement_id}/imagen` }} style={styles.image} contentFit="cover" /> : null}
               <Text style={styles.kind}>{t(`announce_${a.type}`)}</Text>
               <Text style={styles.title}>{a.title}</Text>
               <Text style={styles.text}>{a.text}</Text>
@@ -52,6 +54,7 @@ const useStyles = makeStyles((c) => ({
   heading: { color: c.onSurface, fontWeight: "800", fontSize: 22 },
   empty: { color: c.onSurfaceSecondary, fontSize: 15, textAlign: "center", marginTop: 40 },
   card: { backgroundColor: c.surfaceSecondary, borderRadius: 18, padding: 16, gap: 6 },
+  image: { width: "100%", height: 160, borderRadius: 12 },
   kind: { color: c.brandPrimary, fontWeight: "800", fontSize: 12, textTransform: "uppercase" },
   title: { color: c.onSurface, fontWeight: "800", fontSize: 17 },
   text: { color: c.onSurfaceSecondary, fontSize: 14, lineHeight: 20 },

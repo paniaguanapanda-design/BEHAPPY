@@ -1,6 +1,6 @@
 // Service worker of BE HAPPY Admin: lets the panel be installed and open instantly.
 // The app shell is cached; the numbers (/api/...) always come from the network, never from the cache.
-const CACHE = "bh-admin-v1";
+const CACHE = "bh-admin-v2";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
