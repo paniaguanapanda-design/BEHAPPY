@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Linking, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Linking, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -205,7 +205,16 @@ export default function SpecialistProfile() {
       />
       <BlurView intensity={60} tint="light" style={[styles.cta, { paddingBottom: insets.bottom + 12 }]}>
         {isMe ? (
-          <Button style={{ flex: 1 }} title={t("edit_profile")} icon="create-outline" onPress={() => router.push("/specialist-form")} testID="edit-own-profile-button" />
+          <View style={{ flex: 1, flexDirection: "row", gap: 8 }}>
+            <Button style={{ flex: 1 }} title={t("edit_profile")} icon="create-outline" onPress={() => router.push("/specialist-form")} testID="edit-own-profile-button" />
+            <Button
+              variant="secondary"
+              icon="share-social-outline"
+              title={t("spec_share")}
+              testID="share-own-profile-button"
+              onPress={() => Share.share({ message: t("spec_share_text").replace("{url}", `https://app.be-happyapp.com/specialist/${id}`) }).catch(() => {})}
+            />
+          </View>
         ) : s.contact_blocked ? (
           // De otra provincia: se ve la ficha, pero no se le puede escribir ni llamar
           <View style={{ flex: 1, gap: 8 }} testID="specialist-other-province">
